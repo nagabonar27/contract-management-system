@@ -4,10 +4,10 @@ from datetime import datetime
 from db import get_db, init_db
 
 app = Flask(__name__)
-# Enable CORS for all domains for now (development)
+# cors enabled
 CORS(app)
 
-# Initialize DB
+# init db
 init_db()
 
 # --- ROUTES ---

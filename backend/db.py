@@ -4,7 +4,6 @@ import os
 DB_NAME = "contract_system.db"
 
 def get_db():
-    # Helper to find db in the same directory as this file
     base_dir = os.path.dirname(os.path.abspath(__file__))
     db_path = os.path.join(base_dir, DB_NAME)
     
@@ -16,7 +15,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # Enable Foreign Keys
+    # enable foreign keys
     c.execute("PRAGMA foreign_keys = ON;")
 
     # --- TABLES ---
