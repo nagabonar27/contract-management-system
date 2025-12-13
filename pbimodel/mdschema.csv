@@ -1,0 +1,75 @@
+CATALOG_NAME,SCHEMA_NAME,CUBE_NAME,MEASURE_NAME,MEASURE_UNIQUE_NAME,MEASURE_CAPTION,MEASURE_GUID,MEASURE_AGGREGATOR,DATA_TYPE,NUMERIC_PRECISION,NUMERIC_SCALE,MEASURE_UNITS,DESCRIPTION,EXPRESSION,MEASURE_IS_VISIBLE,LEVELS_LIST,MEASURE_NAME_SQL_COLUMN_NAME,MEASURE_UNQUALIFIED_CAPTION,MEASUREGROUP_NAME,MEASURE_DISPLAY_FOLDER,DEFAULT_FORMAT_STRING
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","Cost Saving AVG","[Measures].[Cost Saving AVG]","Cost Saving AVG",,0,5,65535,-1,"","","SUM('DB Contracts'[Cost_Saving])/SUM('DB Contracts'[Contract_Amount_After_Price_Change])",True,"","Cost Saving AVG","Cost Saving AVG","DB Contracts","","0.00%;-0.00%;0.00%"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","Total Tracked Cost Saving","[Measures].[Total Tracked Cost Saving]","Total Tracked Cost Saving",,0,130,65535,-1,"","","COUNTROWS(FILTER('DB Contracts', 'DB Contracts'[Cost_Saving] <> 0)) & "" of "" & COUNTROWS(FILTER('DB Contracts', 'DB Contracts'[Status] = ""Active""))",True,"","Total Tracked Cost Saving","Total Tracked Cost Saving","DB Contracts","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","_SumContractPaid","[Measures].[_SumContractPaid]","_SumContractPaid",,0,5,65535,-1,"","","sum('DB payment_tracker'[Amount_AsPerContract])",True,"","_SumContractPaid","_SumContractPaid","DB payment_tracker","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","Total_Payment_Term","[Measures].[Total_Payment_Term]","Total_Payment_Term",,0,20,65535,-1,"","","SUM('views DB Contract_ payment_progress'[Payment_Term])",True,"","Total_Payment_Term","Total_Payment_Term","views DB Contract_ payment_progress","","0"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","Total_Term_End","[Measures].[Total_Term_End]","Total_Term_End",,0,20,65535,-1,"","","SUM('views DB Contract_ payment_progress'[Term_End])",True,"","Total_Term_End","Total_Term_End","views DB Contract_ payment_progress","","0"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","Payment_Term_Progress_%","[Measures].[Payment_Term_Progress_%]","Payment_Term_Progress_%",,0,5,65535,-1,"","","DIVIDE(
+    [Total_Payment_Term],
+    [Total_Term_End]
+)",True,"","Payment_Term_Progress_%","Payment_Term_Progress_%","views DB Contract_ payment_progress","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","%1","[Measures].[%1]","%1",,0,20,65535,-1,"","","1",True,"","%1","%1","views DB Contract_ payment_progress","","0"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","New_Count","[Measures].[New_Count]","New_Count",,0,20,65535,-1,"","","CALCULATE(COUNTROWS(gsheets_Upcoming),gsheets_Upcoming[Upcoming_Type] = ""New"")",True,"","New_Count","New_Count","gsheets_Upcoming","","0"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","New_Amandemen","[Measures].[New_Amandemen]","New_Amandemen",,0,20,65535,-1,"","","CALCULATE(COUNTROWS(gsheets_Upcoming),gsheets_Upcoming[Upcoming_Type] = ""Amandemen"")",True,"","New_Amandemen","New_Amandemen","gsheets_Upcoming","","0"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","_IsActive","[Measures].[_IsActive]","_IsActive",,0,20,65535,-1,"","","VAR CurrentMonth = SELECTEDVALUE(Months[_Endofmonthdate])
+VAR CurrentContract = SELECTEDVALUE(Combined_Contracts[Contract_Number])
+VAR MaxRow =
+    CALCULATE (
+        MAX (Combined_Contracts[Amendment_Version] ),
+        FILTER (
+            Combined_Contracts,
+            Combined_Contracts[Contract_Number] = CurrentContract &&
+            CurrentMonth >= EOMONTH(Combined_Contracts[Contract_Date], 0) &&
+            CurrentMonth <= EOMONTH(Combined_Contracts[Expired_Date], 0)
+        )
+    )
+RETURN
+IF ( ISBLANK(MaxRow), 0, MaxRow + 1 )",True,"","_IsActive","_IsActive","Combined_Contracts","","0"
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","_%Cost Saving","[Measures].[_%Cost Saving]","_%Cost Saving",,0,5,65535,-1,"","","SUM(Combined_Contracts[Cost_Saving])/
+SUM(Combined_Contracts[Contract_Amount])",True,"","_%Cost Saving","_%Cost Saving","Combined_Contracts","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","_Total Tracked Cost Saving","[Measures].[_Total Tracked Cost Saving]","_Total Tracked Cost Saving",,0,130,65535,-1,"","","COUNTROWS(
+        FILTER(
+            'Combined_Contracts', 
+            'Combined_Contracts'[Cost_Saving] <> 0
+        )
+    ) & "" of "" & COUNTROWS(Combined_Contracts)",True,"","_Total Tracked Cost Saving","_Total Tracked Cost Saving","Combined_Contracts","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","_SumContractAmount","[Measures].[_SumContractAmount]","_SumContractAmount",,0,5,65535,-1,"","","SUMX (
+    ADDCOLUMNS (
+        SUMMARIZE (Combined_Contracts, Combined_Contracts[Contract_Number]),
+        ""LatestAmount"",
+            CALCULATE (
+                MAX (Combined_Contracts[Contract_Amount]),
+                FILTER (
+                    Combined_Contracts,
+                    Combined_Contracts[Contract_Number] = EARLIER (Combined_Contracts[Contract_Number]) &&
+                    Combined_Contracts[Amendment_Version] =
+                        CALCULATE (
+                            MAX (Combined_Contracts[Amendment_Version]),
+                            FILTER (
+                                Combined_Contracts,
+                                Combined_Contracts[Contract_Number] = EARLIER (Combined_Contracts[Contract_Number])
+                            )
+                        )
+                )
+            )
+    ),
+    [LatestAmount]
+)",True,"","_SumContractAmount","_SumContractAmount","Combined_Contracts","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","_IsLatestAmendmentFlag","[Measures].[_IsLatestAmendmentFlag]","_IsLatestAmendmentFlag",,0,130,65535,-1,"","","VAR CurrentContract = SELECTEDVALUE(Combined_Contracts[Contract_Number])
+VAR CurrentVersion = SELECTEDVALUE(Combined_Contracts[Amendment_Version])
+VAR MaxVersion =
+    CALCULATE (
+        MAX (Combined_Contracts[Amendment_Version]),
+        FILTER (
+            Combined_Contracts,
+            Combined_Contracts[Contract_Number] = CurrentContract
+        )
+    )
+RETURN
+    IF (
+        NOT ISBLANK(CurrentContract) &&
+        CurrentVersion = MaxVersion,
+        ""Yes"",
+        ""No""
+    )",True,"","_IsLatestAmendmentFlag","_IsLatestAmendmentFlag","Combined_Contracts","",""
+"a0779d94-e635-452b-8a43-45d0f9453a26","","Model","__Default measure","[Measures].[__Default measure]","__Default measure",,127,12,65535,-1,"","","1",False,"","__Default measure","__Default measure","","",""
