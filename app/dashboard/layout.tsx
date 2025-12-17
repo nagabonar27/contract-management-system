@@ -67,8 +67,8 @@ export default function DashboardLayout({
 
                         {/* 2 contract management */}
                         <Link
-                            href="/dashboard/ongoing"
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/dashboard/ongoing")
+                            href="/dashboard/contractmanagement/ongoing"
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/dashboard/contractmanagement/ongoing")
                                 ? "bg-muted text-primary"
                                 : "text-muted-foreground hover:bg-muted"
                                 }`}
