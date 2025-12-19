@@ -12,6 +12,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Eye, FileEdit } from "lucide-react"
 import { format } from "date-fns"
 import { ContractNav } from "@/components/contract/ContractNav"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Loader2 } from "lucide-react"
 
 interface ActiveContract {
     id: string
@@ -24,12 +26,19 @@ interface ActiveContract {
     parent_contract_id: string | null
 }
 
+
+
 export default function ActiveContractsPage() {
     const router = useRouter()
     const [contracts, setContracts] = useState<ActiveContract[]>([])
     const [filteredContracts, setFilteredContracts] = useState<ActiveContract[]>([])
     const [loading, setLoading] = useState(true)
     const [activeFilter, setActiveFilter] = useState("all")
+
+    // Amendment State
+    const [showAmendmentModal, setShowAmendmentModal] = useState(false)
+    const [selectedContract, setSelectedContract] = useState<ActiveContract | null>(null)
+    const [creatingAmendment, setCreatingAmendment] = useState(false)
 
     useEffect(() => {
         fetchContracts()
@@ -45,7 +54,7 @@ export default function ActiveContractsPage() {
             const { data, error } = await supabase
                 .from('contracts')
                 .select('id, title, contract_number, appointed_vendor, effective_date, expiry_date, version, parent_contract_id')
-                .eq('status', 'Active')
+                .eq('status', 'Active') // Active status represents Completed contracts
                 .order('expiry_date', { ascending: true })
 
             if (error) throw error
@@ -117,8 +126,113 @@ export default function ActiveContractsPage() {
         router.push(`/dashboard/contractmanagement/ongoing/${id}`)
     }
 
-    const handleCreateAmendment = (id: string) => {
-        router.push(`/contract-management/active/${id}/amend`)
+    const handleInitiateAmendment = (contract: ActiveContract) => {
+        setSelectedContract(contract)
+        setShowAmendmentModal(true)
+    }
+
+    const handleCreateAmendment = async () => {
+        if (!selectedContract) return
+
+        try {
+            setCreatingAmendment(true)
+
+            // 1. Fetch full details of the original contract
+            const { data: original, error: fetchError } = await supabase
+                .from('contracts')
+                .select('*')
+                .eq('id', selectedContract.id)
+                .single()
+
+            if (fetchError) throw fetchError
+
+            // 2. Prepare new amendment payload
+            const newVersion = (original.version || 0) + 1
+            const amendmentData = {
+                title: `${original.title} - Amendment ${newVersion}`,
+                contract_number: original.contract_number, // Keep same number, or maybe add suffix logic if needed
+                status: 'On Progress',
+                parent_contract_id: original.id,
+                version: newVersion,
+                category: original.category,
+                contract_type_id: original.contract_type_id,
+                division: original.division,
+                department: original.department,
+                contract_amount: original.contract_amount,
+                // Do not copy effective/expiry dates as those might change in amendment
+                effective_date: null,
+                expiry_date: null,
+                created_by: original.created_by // Or current user? Ideally current user. Supabase default or handle via auth context if available. 
+                // For now, let Supabase handle 'created_by' via default or trigger if set, or just copy instructions.
+                // Assuming RLS handles current user on insert usually.
+            }
+
+            // Remove ID and timestamps
+            // @ts-ignore
+            delete amendmentData.id
+            // @ts-ignore
+            delete amendmentData.created_at
+            // @ts-ignore
+            delete amendmentData.updated_at
+
+            // 3. Insert new contract (Amendment)
+            const { data: newContract, error: insertError } = await supabase
+                .from('contracts')
+                .insert(amendmentData)
+                .select()
+                .single()
+
+            if (insertError) throw insertError
+
+            // 4. Copy Vendors (Important!)
+            const { data: vendors } = await supabase
+                .from('contract_vendors')
+                .select('*')
+                .eq('contract_id', selectedContract.id)
+
+            if (vendors && vendors.length > 0) {
+                const vendorsToInsert = vendors.map(v => ({
+                    contract_id: newContract.id,
+                    vendor_name: v.vendor_name,
+                    pic_name: v.pic_name,
+                    pic_phone: v.pic_phone,
+                    pic_email: v.pic_email,
+                    is_appointed: v.is_appointed,
+                    price_note: v.price_note,
+                    // Reset evaluations? Or keep? Usually keep for reference or base.
+                    tech_eval_note: v.tech_eval_note,
+                    kyc_note: v.kyc_note
+                }))
+                await supabase.from('contract_vendors').insert(vendorsToInsert)
+            }
+
+            // 5. Create Default Amendment Agenda
+            // Amendments typically have fewer steps than full contracts
+            const amendmentSteps = [
+                "Drafting Amendment",
+                "Review Amendment",
+                "Internal Contract Signature Process",
+                "Vendor Contract Signature Process"
+            ]
+
+            const agendaItems = amendmentSteps.map(step => ({
+                contract_id: newContract.id,
+                step_name: step,
+                status: 'Pending'
+            }))
+
+            await supabase.from('contract_bid_agenda').insert(agendaItems)
+
+            // 6. Redirect
+            setShowAmendmentModal(false)
+            router.push(`/dashboard/contractmanagement/ongoing/${newContract.id}`)
+
+        } catch (error: any) {
+            console.error("Error creating amendment:", error)
+            alert("Failed to create amendment: " + error.message)
+        } finally {
+            setCreatingAmendment(false)
+        }
     }
 
     return (
@@ -132,6 +246,7 @@ export default function ActiveContractsPage() {
 
             <ContractNav />
 
+            {/* Filter Tabs */}
             <Tabs value={activeFilter} onValueChange={setActiveFilter} className="w-full">
                 <TabsList>
                     <TabsTrigger value="all">All ({contracts.length})</TabsTrigger>
@@ -211,7 +326,7 @@ export default function ActiveContractsPage() {
                                                                     <Eye className="mr-2 h-4 w-4" />
                                                                     View Contract
                                                                 </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => handleCreateAmendment(contract.id)}>
+                                                                <DropdownMenuItem onClick={() => handleInitiateAmendment(contract)}>
                                                                     <FileEdit className="mr-2 h-4 w-4" />
                                                                     Create Amendment
                                                                 </DropdownMenuItem>
@@ -228,6 +343,33 @@ export default function ActiveContractsPage() {
                     </Card>
                 </TabsContent>
             </Tabs>
+
+            {/* CREATE AMENDMENT MODAL */}
+            <Dialog open={showAmendmentModal} onOpenChange={setShowAmendmentModal}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Create Amendment</DialogTitle>
+                        <DialogDescription>
+                            This will create a new draft amendment for <b>{selectedContract?.contract_number}</b> (v{(selectedContract?.version || 0) + 1}).
+                            <br /><br />
+                            Are you sure you want to proceed?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowAmendmentModal(false)}>Cancel</Button>
+                        <Button onClick={handleCreateAmendment} disabled={creatingAmendment}>
+                            {creatingAmendment ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Creating...
+                                </>
+                            ) : (
+                                "Create Amendment"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

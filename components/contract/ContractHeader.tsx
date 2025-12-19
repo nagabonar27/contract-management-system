@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Combobox, Option } from "@/components/ui/shared/combobox"
 import { FilePenLine, FileCheck } from "lucide-react"
 
@@ -42,9 +43,12 @@ interface ContractHeaderProps {
     ptOptions: Option[]
     typeOptions: Option[]
     onEditToggle: () => void
-    onFormChange: (updates: Partial<typeof editForm>) => void
+    onFormChange: (updates: Partial<ContractHeaderProps['editForm']>) => void
     onSave: () => void
-    onFinalize: () => void
+
+    onFinish: () => void
+    onAmend: () => void
+    onExtend: () => void
     // Status checkboxes
     isCR?: boolean
     isOnHold?: boolean
@@ -65,7 +69,9 @@ export function ContractHeader({
     onEditToggle,
     onFormChange,
     onSave,
-    onFinalize,
+    onFinish,
+    onAmend,
+    onExtend,
     isCR,
     isOnHold,
     isAnticipated,
@@ -77,42 +83,87 @@ export function ContractHeader({
         return 'secondary'
     }
 
+    const getDivisionColor = (div: string | null) => {
+        switch (div) {
+            case 'TECH': return 'bg-blue-100 text-blue-800 border-blue-200'
+            case 'HRGA': return 'bg-pink-100 text-pink-800 border-pink-200'
+            case 'FIN': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
+            case 'LGL': return 'bg-purple-100 text-purple-800 border-purple-200'
+            case 'PROC': return 'bg-orange-100 text-orange-800 border-orange-200'
+            case 'OPS': return 'bg-cyan-100 text-cyan-800 border-cyan-200'
+            case 'EXT': return 'bg-lime-100 text-lime-800 border-lime-200'
+            case 'PLNT': return 'bg-amber-100 text-amber-800 border-amber-200'
+            case 'MGMT': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
+            default: return 'bg-gray-100 text-gray-800 border-gray-200'
+        }
+    }
+
+    const isAmendment = contract?.title?.toLowerCase().includes('amendment') || false
+
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex-1">
-                    <CardTitle className="flex items-center gap-3 flex-wrap">
+                    <CardTitle className="flex items-center gap-3 flex-wrap mb-2">
                         {contract?.title}
+
+                        {/* Amendment Marker - Beside Contract Name */}
+                        {isAmendment && (
+                            <Badge variant="outline" className="bg-violet-100 text-violet-800 border-violet-200">
+                                Amendment
+                            </Badge>
+                        )}
+
                         <Badge variant={getBadgeVariant()}>
                             {displayStatus}
                         </Badge>
+
 
                         {/* Status Markers */}
                         {isCR && <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">CR</Badge>}
                         {isOnHold && <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">On Hold</Badge>}
                         {isAnticipated && <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Anticipated</Badge>}
                     </CardTitle>
-                    <CardDescription>ID: {contract?.id}</CardDescription>
-                    {contract?.contract_number && (
-                        <span className="mr-4 mt-1 text-sm font-medium text-blue-600">
-                            Contract #: {contract.contract_number}
-                        </span>
-                    )}
-                    {contract?.expiry_date && (
-                        <span className="mt-1 text-sm text-muted-foreground">
-                            Expires: {contract.expiry_date}
-                        </span>
-                    )}
+                    <div className="text-sm text-muted-foreground space-y-1">
+                        <div>ID: {contract?.id}</div>
+                        {contract?.contract_number && (
+                            <div className="font-medium text-blue-600">
+                                Contract #: {contract.contract_number}
+                            </div>
+                        )}
+                        {contract?.expiry_date && (
+                            <div>
+                                Expires: {contract.expiry_date}
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <div className="flex gap-2">
-                    {isReadyToFinalize && !isActive && (
+                    {(isActive || displayStatus === 'Expired') && (
                         <Button
-                            className="bg-green-600 hover:bg-green-700 text-white"
+                            variant="secondary"
                             size="sm"
-                            onClick={onFinalize}
+                            onClick={onExtend}
                         >
-                            <FileCheck className="mr-2 h-4 w-4" /> Finalize Contract
+                            Extend Contract
                         </Button>
+                    )}
+                    {isReadyToFinalize && !isActive && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button className="bg-green-600 hover:bg-green-700 text-white" size="sm">
+                                    <FileCheck className="mr-2 h-4 w-4" /> Take Action
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={onFinish}>
+                                    Finish Contract
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={onAmend}>
+                                    Amend Contract
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     )}
                     <Button
                         variant={isEditingHeader ? "secondary" : "outline"}
@@ -253,6 +304,7 @@ export function ContractHeader({
                         </Button>
                     </div>
                 ) : (
+
                     <div className="grid grid-cols-2 lg:grid-cols-5 gap-6 text-sm">
                         <div>
                             <span className="block text-muted-foreground">Type</span>
@@ -269,7 +321,13 @@ export function ContractHeader({
                         </div>
                         <div>
                             <span className="block text-muted-foreground">Division</span>
-                            <span className="font-medium">{contract?.division || '-'}</span>
+                            <span className="font-medium">
+                                {contract?.division ? (
+                                    <Badge variant="outline" className={getDivisionColor(contract.division)}>
+                                        {contract.division}
+                                    </Badge>
+                                ) : '-'}
+                            </span>
                         </div>
                         <div>
                             <span className="block text-muted-foreground">Department</span>
@@ -311,6 +369,6 @@ export function ContractHeader({
                     </div>
                 )}
             </CardContent>
-        </Card>
+        </Card >
     )
 }

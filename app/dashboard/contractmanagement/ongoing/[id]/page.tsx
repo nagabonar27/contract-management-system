@@ -14,6 +14,7 @@ import { ContractHeader } from "@/components/contract/ContractHeader"
 import { BidAgendaSection } from "@/components/contract/BidAgendaSection"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { GanttChart } from "@/components/contract/GanttChart"
+import { ExtendContractModal } from "@/components/contract/ExtendContractModal"
 import type { AgendaItem, ContractVendor } from "@/components/contract/BidAgendaSection"
 import type { Option } from "@/components/ui/shared/combobox"
 
@@ -37,7 +38,9 @@ type ContractData = {
     is_cr: boolean | null
     is_on_hold: boolean | null
     is_anticipated: boolean | null
+    appointed_vendor: string | null
 }
+
 
 export default function ContractDetailPage() {
     const params = useParams()
@@ -55,9 +58,15 @@ export default function ContractDetailPage() {
 
     // Finalize / Contract Number State
     const [showFinalizeModal, setShowFinalizeModal] = useState(false)
+    const [finalizeMode, setFinalizeMode] = useState<'finish' | 'amend'>('finish')
     const [finalizeContractNumber, setFinalizeContractNumber] = useState("")
     const [finalizeEffectiveDate, setFinalizeEffectiveDate] = useState("")
     const [finalizeExpiryDate, setFinalizeExpiryDate] = useState("")
+    const [finalizeContractSummary, setFinalizeContractSummary] = useState("")
+    const [finalizeReferenceNumber, setFinalizeReferenceNumber] = useState("")
+
+    // Extend Contract State
+    const [showExtendModal, setShowExtendModal] = useState(false)
 
     // Vendor Findings Input (New candidate)
     const [newVendorName, setNewVendorName] = useState("")
@@ -153,7 +162,7 @@ export default function ContractDetailPage() {
             }
 
             if (contractData) {
-                console.log('Contract data:', contractData)
+
 
                 // Extract PT info - handle both array and object formats
                 const pt = contractData.pt as any
@@ -314,11 +323,13 @@ export default function ContractDetailPage() {
             contract_number: finalizeContractNumber,
             effective_date: finalizeEffectiveDate || null,
             expiry_date: finalizeExpiryDate || null,
-            status: 'Active'
+            status: 'Active', // Active means Completed/Finalized
+            contract_summary: finalizeContractSummary || null,
+            reference_contract_number: finalizeReferenceNumber || null
         }).eq('id', id)
 
         if (error) {
-            alert("Error finalizing: " + error.message)
+            alert("Error completing contract: " + error.message)
         } else {
             setContract(prev => prev ? {
                 ...prev,
@@ -333,6 +344,25 @@ export default function ContractDetailPage() {
                 expiry_date: finalizeExpiryDate
             }))
             setShowFinalizeModal(false)
+            alert("Contract marked as Completed!")
+            router.push("/dashboard/contractmanagement/active")
+        }
+    }
+
+    const handleExtendContract = async (newExpiryDate: string) => {
+        if (!contract) return
+        if (!newExpiryDate) return
+
+        const { error } = await supabase.from('contracts').update({
+            expiry_date: newExpiryDate
+        }).eq('id', id)
+
+        if (error) {
+            alert("Error extending contract: " + error.message)
+        } else {
+            setContract(prev => prev ? { ...prev, expiry_date: newExpiryDate } : null)
+            setEditForm(prev => ({ ...prev, expiry_date: newExpiryDate }))
+            alert("Contract extended successfully!")
         }
     }
 
@@ -347,6 +377,10 @@ export default function ContractDetailPage() {
                 const typeRecord = await supabase.from('contract_types').select('id').eq('name', editForm.contract_type_name).single()
                 const typeId = typeRecord.data?.id || contract.contract_type_id
 
+                // Extract Appointed Vendor from Agenda
+                const appointedVendorStep = agendaList.find(item => item.step_name === "Appointed Vendor")
+                const appointedVendorName = appointedVendorStep?.remarks || contract.appointed_vendor
+
                 const { error: contractError } = await supabase.from('contracts')
                     .update({
                         title: editForm.title,
@@ -356,7 +390,8 @@ export default function ContractDetailPage() {
                         pt_id: ptId,
                         contract_type_id: typeId,
                         effective_date: editForm.effective_date || null,
-                        expiry_date: editForm.expiry_date || null
+                        expiry_date: editForm.expiry_date || null,
+                        appointed_vendor: appointedVendorName
                     })
                     .eq('id', id)
 
@@ -482,7 +517,17 @@ export default function ContractDetailPage() {
                 onEditToggle={() => setIsEditingHeader(!isEditingHeader)}
                 onFormChange={(updates) => setEditForm(prev => ({ ...prev, ...updates }))}
                 onSave={handleSaveHeader}
-                onFinalize={() => setShowFinalizeModal(true)}
+                onFinish={() => {
+                    setFinalizeMode('finish')
+                    setFinalizeContractSummary("")
+                    setShowFinalizeModal(true)
+                }}
+                onAmend={() => {
+                    setFinalizeMode('amend')
+                    setFinalizeContractSummary("")
+                    setShowFinalizeModal(true)
+                }}
+                onExtend={() => setShowExtendModal(true)}
                 isCR={isCR}
                 isOnHold={isOnHold}
                 isAnticipated={isAnticipated}
@@ -525,11 +570,26 @@ export default function ContractDetailPage() {
                 contractNumber={finalizeContractNumber}
                 effectiveDate={finalizeEffectiveDate}
                 expiryDate={finalizeExpiryDate}
+                contractSummary={finalizeContractSummary}
                 onContractNumberChange={setFinalizeContractNumber}
                 onEffectiveDateChange={setFinalizeEffectiveDate}
                 onExpiryDateChange={setFinalizeExpiryDate}
+                onContractSummaryChange={setFinalizeContractSummary}
                 onFinalize={handleFinalizeContract}
+                isAmendment={finalizeMode === 'amend'}
+                referenceContractNumber={finalizeReferenceNumber}
+                onReferenceNumberChange={setFinalizeReferenceNumber}
             />
+
+            {/* EXTEND CONTRACT MODAL */}
+            {contract && (
+                <ExtendContractModal
+                    open={showExtendModal}
+                    onOpenChange={setShowExtendModal}
+                    currentExpiryDate={contract.expiry_date || ""}
+                    onExtend={handleExtendContract}
+                />
+            )}
         </div>
     )
 }

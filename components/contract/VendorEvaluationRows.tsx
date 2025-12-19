@@ -114,7 +114,9 @@ export function VendorEvaluationRows({
                                                             isClarification ? (
                                                                 (() => {
                                                                     const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
-                                                                    return sd ? `${sd.start_date || "?"} - ${sd.end_date || "?"}` : "No dates set"
+                                                                    const dates = sd ? `${sd.start_date || "?"} - ${sd.end_date || "?"}` : "No dates set"
+                                                                    const remark = v.tech_eval_remarks ? ` (${v.tech_eval_remarks})` : ""
+                                                                    return dates + remark
                                                                 })()
                                                             ) :
                                                                 displayValue}
@@ -162,6 +164,14 @@ export function VendorEvaluationRows({
                                                             className="w-[140px] h-8 text-xs"
                                                         />
                                                     </div>
+                                                    {isClarification && (
+                                                        <Input
+                                                            value={v.tech_eval_remarks || ""}
+                                                            onChange={e => onUpdateVendorData(v.id, 'tech_eval_remarks', e.target.value)}
+                                                            className="h-8 flex-1 text-xs bg-white min-w-[200px]"
+                                                            placeholder="Clarification remarks..."
+                                                        />
+                                                    )}
                                                 </>
                                             )}
 

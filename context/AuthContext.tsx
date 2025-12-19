@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // --- FIXED FUNCTION START ---
     const fetchProfile = async (userId: string) => {
         try {
-            console.log("Fetching profile for ID:", userId) // DEBUG 1
+
 
             const { data, error } = await supabase
                 .from('profiles')
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
             }
 
-            console.log("Profile Data returned:", data) // DEBUG 3
+
             setProfile(data)
 
         } catch (err) {

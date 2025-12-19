@@ -60,7 +60,7 @@ interface BidAgendaSectionProps {
     onAddStep: (stepName: string) => void
     onDeleteStep: (stepId: string) => void
     onUpdateAgendaItem: (itemId: string, field: keyof AgendaItem, value: string) => void
-    onUpdateVendorData: (vendorId: string, field: keyof ContractVendor, value: string) => void
+    onUpdateVendorData: (vendorId: string, field: keyof ContractVendor, value: any) => void
     onAddVendor: (stepId: string) => void  // Updated to accept stepId
     onDeleteVendor: (vendorId: string) => void
     onNewVendorNameChange: (value: string) => void
@@ -220,7 +220,9 @@ export function BidAgendaSection({
                                                 )}
                                             </td>
                                             <td className="p-4 align-top">
-                                                {(isAppointedVendor && isEditingAgenda) ? (
+                                                {isClarification ? (
+                                                    <span className="text-muted-foreground text-xs italic">Per vendor</span>
+                                                ) : (isAppointedVendor && isEditingAgenda) ? (
                                                     <Select value={item.remarks || ""} onValueChange={val => onUpdateAgendaItem(item.id, 'remarks', val)}>
                                                         <SelectTrigger className="h-8 w-full text-xs">
                                                             <SelectValue placeholder="Select Appointed Vendor" />
