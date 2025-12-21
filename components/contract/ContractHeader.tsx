@@ -24,6 +24,7 @@ interface ContractHeaderProps {
         vendor?: string | null
         vendor_2?: string | null
         vendor_3?: string | null
+        appointed_vendor?: string | null
     } | null
     displayStatus: string
     isActive: boolean
@@ -54,6 +55,7 @@ interface ContractHeaderProps {
     isOnHold?: boolean
     isAnticipated?: boolean
     onStatusChange?: (field: 'is_cr' | 'is_on_hold' | 'is_anticipated', value: boolean) => void
+    hasAmendmentInProgress?: boolean
 }
 
 export function ContractHeader({
@@ -76,6 +78,7 @@ export function ContractHeader({
     isOnHold,
     isAnticipated,
     onStatusChange,
+    hasAmendmentInProgress = false,
 }: ContractHeaderProps) {
     const getBadgeVariant = () => {
         if (isActive) return 'default'
@@ -139,7 +142,28 @@ export function ContractHeader({
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    {(isActive || displayStatus === 'Expired') && (
+                    {isActive && (
+                        <>
+                            {!hasAmendmentInProgress && (
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button className="bg-green-600 hover:bg-green-700 text-white" size="sm">
+                                            <FileCheck className="mr-2 h-4 w-4" /> Take Action
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={onAmend}>
+                                            Amend Contract
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={onFinish}>
+                                            Finish Contract
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            )}
+                        </>
+                    )}
+                    {displayStatus === 'Expired' && !isActive && (
                         <Button
                             variant="secondary"
                             size="sm"
@@ -148,6 +172,7 @@ export function ContractHeader({
                             Extend Contract
                         </Button>
                     )}
+
                     {isReadyToFinalize && !isActive && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -158,9 +183,6 @@ export function ContractHeader({
                             <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={onFinish}>
                                     Finish Contract
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={onAmend}>
-                                    Amend Contract
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
@@ -358,11 +380,11 @@ export function ContractHeader({
                                 <span className="font-medium">{contract.expiry_date}</span>
                             </div>
                         )}
-                        {(contract?.vendor || contract?.vendor_2 || contract?.vendor_3) && (
+                        {(contract?.appointed_vendor || contract?.vendor || contract?.vendor_2 || contract?.vendor_3) && (
                             <div className="col-span-2">
                                 <span className="block text-muted-foreground">Appointed Vendors</span>
                                 <span className="font-medium">
-                                    {[contract.vendor, contract.vendor_2, contract.vendor_3].filter(Boolean).join(", ")}
+                                    {contract.appointed_vendor || [contract.vendor, contract.vendor_2, contract.vendor_3].filter(Boolean).join(", ")}
                                 </span>
                             </div>
                         )}

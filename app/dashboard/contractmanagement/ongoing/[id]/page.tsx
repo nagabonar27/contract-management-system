@@ -59,6 +59,7 @@ export default function ContractDetailPage() {
     // Finalize / Contract Number State
     const [showFinalizeModal, setShowFinalizeModal] = useState(false)
     const [finalizeMode, setFinalizeMode] = useState<'finish' | 'amend'>('finish')
+    const [hasAmendmentInProgress, setHasAmendmentInProgress] = useState(false)
     const [finalizeContractNumber, setFinalizeContractNumber] = useState("")
     const [finalizeEffectiveDate, setFinalizeEffectiveDate] = useState("")
     const [finalizeExpiryDate, setFinalizeExpiryDate] = useState("")
@@ -105,6 +106,8 @@ export default function ContractDetailPage() {
     const displayStatus = getContractDisplayStatus(contract?.status || "", contract?.expiry_date || null, agendaList)
     const isActive = displayStatus === 'Active' || displayStatus === 'Completed' || displayStatus === 'Expired'
     const isReadyToFinalize = displayStatus === 'Ready to Finalize'
+    // Derive Appointed Vendor from Agenda (if not saved in DB yet)
+    const derivedAppointedVendor = agendaList.find(item => item.step_name === "Appointed Vendor")?.remarks || contract?.appointed_vendor
 
     // --- DATA LOADING ---
     const fetchAgenda = async () => {
@@ -150,7 +153,11 @@ export default function ContractDetailPage() {
                     status,
                     is_cr,
                     is_on_hold,
-                    is_anticipated
+                    status,
+                    is_cr,
+                    is_on_hold,
+                    is_anticipated,
+                    appointed_vendor
                 `)
                 .eq('id', id)
                 .single()
@@ -212,6 +219,16 @@ export default function ContractDetailPage() {
             setLoading(false)
         }
         fetchData()
+        // Check for active amendments
+        const checkAmendment = async () => {
+            const { data } = await supabase.from('contracts')
+                .select('id')
+                .eq('parent_contract_id', id)
+                .eq('status', 'On Progress')
+                .maybeSingle()
+            if (data) setHasAmendmentInProgress(true)
+        }
+        checkAmendment()
     }, [id])
 
     // --- HEADER ACTIONS ---
@@ -319,13 +336,18 @@ export default function ContractDetailPage() {
             }
         }
 
+        // Extract Appointed Vendor from Agenda to ensure it's saved
+        const appointedVendorStep = agendaList.find(item => item.step_name === "Appointed Vendor")
+        const finalAppointedVendor = appointedVendorStep?.remarks || contract.appointed_vendor
+
         const { error } = await supabase.from('contracts').update({
             contract_number: finalizeContractNumber,
             effective_date: finalizeEffectiveDate || null,
             expiry_date: finalizeExpiryDate || null,
             status: 'Active', // Active means Completed/Finalized
             contract_summary: finalizeContractSummary || null,
-            reference_contract_number: finalizeReferenceNumber || null
+            reference_contract_number: finalizeReferenceNumber || null,
+            appointed_vendor: finalAppointedVendor // Ensure this is saved
         }).eq('id', id)
 
         if (error) {
@@ -462,6 +484,7 @@ export default function ContractDetailPage() {
                     title: contractData.title,
                     category: contractData.category || "",
                     division: contractData.division || "",
+                    department: contractData.department || "",
                     pt_id: contractData.pt?.id || 0,
                     pt_name: contractData.pt?.name || "",
                     contract_type_id: contractData.contract_types?.id || 0,
@@ -497,7 +520,11 @@ export default function ContractDetailPage() {
         <div className="flex-1 space-y-6 p-8">
             <div className="flex items-center justify-between">
                 <Button variant="ghost" asChild className="pl-0">
-                    <Link href="/dashboard/contractmanagement/ongoing">
+                    <Link href={
+                        contract?.status === 'Completed' ? "/dashboard/contractmanagement/finished" :
+                            contract?.status === 'Active' ? "/dashboard/contractmanagement/active" :
+                                "/dashboard/contractmanagement/ongoing"
+                    }>
                         <ChevronLeft className="mr-2 h-4 w-4" /> Back
                     </Link>
                 </Button>
@@ -505,7 +532,7 @@ export default function ContractDetailPage() {
 
             {/* CONTRACT HEADER */}
             <ContractHeader
-                contract={contract}
+                contract={contract ? { ...contract, appointed_vendor: derivedAppointedVendor } : null}
                 displayStatus={displayStatus}
                 isActive={isActive}
                 isReadyToFinalize={isReadyToFinalize}
@@ -514,6 +541,7 @@ export default function ContractDetailPage() {
                 categoryOptions={categoryOptions}
                 ptOptions={ptOptions}
                 typeOptions={typeOptions}
+                hasAmendmentInProgress={hasAmendmentInProgress}
                 onEditToggle={() => setIsEditingHeader(!isEditingHeader)}
                 onFormChange={(updates) => setEditForm(prev => ({ ...prev, ...updates }))}
                 onSave={handleSaveHeader}

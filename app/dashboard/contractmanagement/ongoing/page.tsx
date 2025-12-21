@@ -13,17 +13,9 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, FileText, Trash, PlusCircle, BarChart3 } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { ContractNav } from "@/components/contract/ContractNav"
+import { calculatePriceDifference, formatCurrency } from "@/lib/contractUtils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     PieChart,
@@ -33,6 +25,13 @@ import {
     Tooltip,
     Legend
 } from "recharts"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { MoreHorizontal, PlusCircle } from "lucide-react"
 
 const PALETTE_COLORS = [
     '#3b82f6', // blue-500
@@ -81,9 +80,18 @@ type ContractTable = {
     category: string | null
     user_name: string | null
     parent_contract_id: string | null
-    contract_bid_agenda: { step_name: string; start_date: string | null; end_date: string | null; updated_at: string }[]
+    contract_bid_agenda: { step_name: string; start_date: string | null; end_date: string | null; updated_at: string; remarks: string | null }[]
     division: string | null
     current_step_db: string | null
+    appointed_vendor: string | null
+    contract_vendors: {
+        vendor_name: string
+        price_note: string | null
+        revised_price_note: string | null
+    }[]
+    version: number
+
+    department: string | null
 }
 
 const getCurrentStep = (agenda: { step_name: string; start_date: string | null; end_date: string | null; updated_at: string }[]) => {
@@ -102,10 +110,18 @@ const getCurrentStep = (agenda: { step_name: string; start_date: string | null; 
     return sortedAgenda[0].step_name
 }
 
+const getAppointedVendor = (agenda: { step_name: string; remarks: string | null }[]) => {
+    const appointedStep = agenda.find(step => step.step_name === "Appointed Vendor")
+    return appointedStep?.remarks || null
+}
+
 export default function OngoingContractsPage() {
     const [tasks, setTasks] = useState<ContractTable[]>([])
     const [loading, setLoading] = useState(true)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
+    const router = useRouter()
+
+
 
     const fetchTasks = async () => {
         try {
@@ -125,9 +141,13 @@ export default function OngoingContractsPage() {
                     category,
                     division,
                     parent_contract_id,
+                    version,
+
+                    department,
                     contract_types ( name ),
                     profiles:profiles!contracts_created_by_profile_fkey ( full_name ),
-                    contract_bid_agenda ( step_name, start_date, end_date, updated_at )
+                    contract_bid_agenda ( step_name, start_date, end_date, updated_at, remarks ),
+                    contract_vendors ( vendor_name, price_note, revised_price_note )
                 `)
                 .neq('status', 'Active') // Excluding Active as it appears as "Completed" in this context
                 .order('created_at', { ascending: false })
@@ -152,7 +172,12 @@ export default function OngoingContractsPage() {
                     division: item.division,
                     user_name: item.profiles?.full_name,
                     parent_contract_id: item.parent_contract_id,
-                    contract_bid_agenda: item.contract_bid_agenda
+                    contract_bid_agenda: item.contract_bid_agenda,
+                    contract_vendors: item.contract_vendors,
+                    appointed_vendor: getAppointedVendor(item.contract_bid_agenda),
+                    version: item.version,
+
+                    department: item.department
                 }))
                 setTasks(formattedData)
             }
@@ -168,53 +193,7 @@ export default function OngoingContractsPage() {
         fetchTasks()
     }, [])
 
-    const handleDelete = async (id: string, title: string) => { // Added title for confirmation
-        if (!confirm(`Are you sure you want to delete contract "${title}"?\nThis action cannot be undone and will remove all related data (vendors, agenda, logs).`)) return
 
-        try {
-            setLoading(true)
-
-            // Manual Cascade Delete
-            // 1. Logs
-            await supabase.from('contract_logs').delete().eq('contract_id', id)
-            // 2. Vendors (and their step dates? step_dates has FK to vendors. Need to delete step_dates first?)
-            //    We can't easily select all vendor IDs to delete step_dates without a query. 
-            //    Let's try truncating vendors directly. If it fails due to step_dates FK, we need more logic.
-            //    Assuming vendor_step_dates might trigger error.
-            //    Let's check if we can skip vendor_step_dates or if we need to query them.
-            //    Actually, usually CASCADE is set on valid DBs. If not, this is painful.
-            //    I'll assume basic FKs first.
-
-            // Delete vendor_step_dates via join? No, Supabase delete doesn't support generic join delete easily in one call.
-            // Let's try deleting vendors. If it fails, I'll catch it.
-            // But let's try to be robust. 
-            // Query contract vendors first.
-            const { data: vendors } = await supabase.from('contract_vendors').select('id').eq('contract_id', id)
-            if (vendors && vendors.length > 0) {
-                const vendorIds = vendors.map(v => v.id)
-                await supabase.from('vendor_step_dates').delete().in('vendor_id', vendorIds)
-                await supabase.from('contract_vendors').delete().in('id', vendorIds)
-            }
-
-            // 3. Agenda
-            await supabase.from('contract_bid_agenda').delete().eq('contract_id', id)
-
-            // 4. Contract
-            const { error } = await supabase.from('contracts').delete().eq('id', id)
-
-            if (error) {
-                console.error("Delete error:", error)
-                alert("Error deleting contract: " + error.message)
-            } else {
-                setTasks(prev => prev.filter(t => t.id !== id))
-            }
-        } catch (err: any) {
-            console.error("Delete process error:", err)
-            alert("Error processing delete: " + err.message)
-        } finally {
-            setLoading(false)
-        }
-    }
 
     return (
         <div className="container mx-auto p-6 space-y-6">
@@ -237,12 +216,9 @@ export default function OngoingContractsPage() {
 
             <ContractNav />
 
-
-
             {/* Visualizations - Recharts */}
             {
                 (() => {
-                    // Helper to count frequencies
                     const countBy = (arr: ContractTable[], key: keyof ContractTable) => {
                         const counts: Record<string, number> = {}
                         arr.forEach(t => {
@@ -315,7 +291,9 @@ export default function OngoingContractsPage() {
                     <TableHeader>
                         <TableRow>
                             <TableHead>Contract Name</TableHead>
-                            <TableHead>Contract No.</TableHead>
+                            <TableHead>Vendor</TableHead>
+                            <TableHead>Contract Value</TableHead>
+                            <TableHead>Cost Saving</TableHead>
                             <TableHead>User</TableHead>
                             <TableHead>Division</TableHead>
                             <TableHead>Category</TableHead>
@@ -323,20 +301,25 @@ export default function OngoingContractsPage() {
                             <TableHead>Status</TableHead>
                             <TableHead>Current Step</TableHead>
                             <TableHead>Created Date</TableHead>
-                            <TableHead>Updated Date</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
                             <TableRow>
-                                <TableCell colSpan={11} className="h-24 text-center">
+                                <TableCell colSpan={10} className="h-24 text-center">
                                     Loading...
+                                </TableCell>
+                            </TableRow>
+                        ) : errorMsg ? (
+                            <TableRow>
+                                <TableCell colSpan={10} className="h-24 text-center text-red-500">
+                                    Error loading data: {errorMsg}
                                 </TableCell>
                             </TableRow>
                         ) : tasks.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={11} className="h-24 text-center">
+                                <TableCell colSpan={10} className="h-24 text-center">
                                     No contracts found.
                                 </TableCell>
                             </TableRow>
@@ -364,13 +347,39 @@ export default function OngoingContractsPage() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 {task.title}
                                                 {isAmendment && (
-                                                    <Badge variant="outline" className="bg-violet-100 text-violet-800 border-violet-200 text-xs">
+                                                    <Badge variant="outline" className={getDivisionColor('Amendment') + " bg-violet-100 text-violet-800 border-violet-200 text-xs"}>
                                                         Amendment
                                                     </Badge>
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell>{task.contract_number || '-'}</TableCell>
+                                        <TableCell>{task.appointed_vendor || '-'}</TableCell>
+                                        <TableCell>
+                                            {(() => {
+                                                const vendor = task.contract_vendors?.find(v => v.vendor_name === task.appointed_vendor)
+                                                const finalPrice = vendor?.revised_price_note || vendor?.price_note
+                                                return finalPrice ? `Rp ${finalPrice}` : '-'
+                                            })()}
+                                        </TableCell>
+                                        <TableCell>
+                                            {(() => {
+                                                const vendor = task.contract_vendors?.find(v => v.vendor_name === task.appointed_vendor)
+                                                const originalPrice = vendor?.price_note
+                                                const revisedPrice = vendor?.revised_price_note
+
+                                                if (originalPrice && revisedPrice) {
+                                                    const { difference, isSaving } = calculatePriceDifference(originalPrice, revisedPrice)
+                                                    if (isSaving && difference > 0) {
+                                                        return (
+                                                            <span className="text-green-600 font-medium">
+                                                                {formatCurrency(difference)}
+                                                            </span>
+                                                        )
+                                                    }
+                                                }
+                                                return '-'
+                                            })()}
+                                        </TableCell>
                                         <TableCell>{task.user_name || '-'}</TableCell>
                                         <TableCell>
                                             {task.division ? (
@@ -384,8 +393,8 @@ export default function OngoingContractsPage() {
                                             {(task.contract_types?.name || '-')}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant={task.status === 'On Progress' ? "secondary" : task.status === 'Active' ? "default" : "outline"}>
-                                                {task.status === 'Active' ? 'Completed' : task.status}
+                                            <Badge variant={task.status === 'On Progress' ? "secondary" : "outline"}>
+                                                {task.status}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="max-w-[200px] truncate" title={task.current_step || undefined}>
@@ -394,7 +403,6 @@ export default function OngoingContractsPage() {
                                             </Link>
                                         </TableCell>
                                         <TableCell>{new Date(task.created_at).toLocaleDateString()}</TableCell>
-                                        <TableCell>{new Date(task.updated_at).toLocaleDateString()}</TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -404,15 +412,20 @@ export default function OngoingContractsPage() {
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                                     <DropdownMenuItem asChild>
                                                         <Link href={`/dashboard/contractmanagement/ongoing/${task.id}`}>
-                                                            <FileText className="mr-2 h-4 w-4" /> Open
+                                                            Open
                                                         </Link>
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem className="text-red-600" onSelect={() => handleDelete(task.id, task.title)}>
-                                                        <Trash className="mr-2 h-4 w-4" /> Delete
+                                                    <DropdownMenuItem
+                                                        onClick={() => {
+                                                            if (confirm('Are you sure you want to delete this contract?')) {
+                                                                supabase.from('contracts').delete().eq('id', task.id).then(() => fetchTasks());
+                                                            }
+                                                        }}
+                                                        className="text-red-600"
+                                                    >
+                                                        Delete
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -425,6 +438,8 @@ export default function OngoingContractsPage() {
                     </TableBody >
                 </Table >
             </div >
+
+
         </div >
     )
 }

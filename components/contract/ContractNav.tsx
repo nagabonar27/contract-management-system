@@ -12,6 +12,7 @@ export function ContractNav() {
         { href: "/dashboard/contractmanagement/active", label: "Active Contracts" },
         { href: "/dashboard/contractmanagement/expiring", label: "Expiring Soon" },
         { href: "/dashboard/contractmanagement/expired", label: "Expired Contracts" },
+        { href: "/dashboard/contractmanagement/finished", label: "Finished Contracts" },
         { href: "/dashboard/contractmanagement/performance", label: "Performance" },
     ]
 

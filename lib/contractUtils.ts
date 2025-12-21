@@ -45,8 +45,8 @@ export function calculatePriceDifference(
     percentage: number
     isSaving: boolean
 } {
-    const original = parseFloat(originalPrice || "0")
-    const revised = parseFloat(revisedPrice || originalPrice || "0")
+    const original = parseFloat(parseNumber(originalPrice || "0"))
+    const revised = parseFloat(parseNumber(revisedPrice || originalPrice || "0"))
     const difference = original - revised
     const percentage = original > 0 ? (difference / original) * 100 : 0
 

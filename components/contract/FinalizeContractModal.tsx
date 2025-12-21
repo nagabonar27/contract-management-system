@@ -27,6 +27,7 @@ interface FinalizeContractModalProps {
     isAmendment?: boolean
     referenceContractNumber?: string
     onReferenceNumberChange?: (value: string) => void
+    simpleFinish?: boolean
 }
 
 export function FinalizeContractModal({
@@ -45,6 +46,7 @@ export function FinalizeContractModal({
     isAmendment = false,
     referenceContractNumber,
     onReferenceNumberChange,
+    simpleFinish = false,
 }: FinalizeContractModalProps) {
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('id-ID', {
@@ -64,14 +66,16 @@ export function FinalizeContractModal({
                     <DialogDescription>
                         {isAmendment
                             ? "All signatures are completed. Finalize this amendment by adding contract details."
-                            : "All signatures are completed. Finalize by adding a Contract Number, Effective Date, and Expiry Date."
+                            : simpleFinish
+                                ? "Add final remarks to finish/close this contract."
+                                : "All signatures are completed. Finalize by adding a Contract Number, Effective Date, and Expiry Date."
                         }
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-4 py-4">
-                    {/* Amendment Reference Number */}
-                    {isAmendment && onReferenceNumberChange && (
+                    {/* Amendment Reference Number - Hide in simple finish */}
+                    {isAmendment && onReferenceNumberChange && !simpleFinish && (
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="reference_number" className="text-right">
                                 Reference #
@@ -86,50 +90,56 @@ export function FinalizeContractModal({
                         </div>
                     )}
 
-                    {/* Contract Number */}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="contract_number" className="text-right">
-                            Contract #
-                        </Label>
-                        <Input
-                            id="contract_number"
-                            value={contractNumber}
-                            onChange={(e) => onContractNumberChange(e.target.value)}
-                            placeholder={isAmendment ? "e.g., C-2024-001-A1" : "e.g., C-2024-001"}
-                            className="col-span-3"
-                        />
-                    </div>
+                    {/* Contract Number - Hide in simple finish */}
+                    {!simpleFinish && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="contract_number" className="text-right">
+                                Contract #
+                            </Label>
+                            <Input
+                                id="contract_number"
+                                value={contractNumber}
+                                onChange={(e) => onContractNumberChange(e.target.value)}
+                                placeholder={isAmendment ? "e.g., C-2024-001-A1" : "e.g., C-2024-001"}
+                                className="col-span-3"
+                            />
+                        </div>
+                    )}
 
-                    {/* Effective Date */}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="effective_date" className="text-right">
-                            Effective Date
-                        </Label>
-                        <Input
-                            id="effective_date"
-                            type="date"
-                            value={effectiveDate}
-                            onChange={(e) => onEffectiveDateChange(e.target.value)}
-                            className="col-span-3"
-                        />
-                    </div>
+                    {/* Effective Date - Hide in simple finish */}
+                    {!simpleFinish && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="effective_date" className="text-right">
+                                Effective Date
+                            </Label>
+                            <Input
+                                id="effective_date"
+                                type="date"
+                                value={effectiveDate}
+                                onChange={(e) => onEffectiveDateChange(e.target.value)}
+                                className="col-span-3"
+                            />
+                        </div>
+                    )}
 
-                    {/* Expiry Date */}
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="expiry_date" className="text-right">
-                            Expiry Date
-                        </Label>
-                        <Input
-                            id="expiry_date"
-                            type="date"
-                            value={expiryDate}
-                            onChange={(e) => onExpiryDateChange(e.target.value)}
-                            className="col-span-3"
-                        />
-                    </div>
+                    {/* Expiry Date - Hide in simple finish */}
+                    {!simpleFinish && (
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="expiry_date" className="text-right">
+                                Expiry Date
+                            </Label>
+                            <Input
+                                id="expiry_date"
+                                type="date"
+                                value={expiryDate}
+                                onChange={(e) => onExpiryDateChange(e.target.value)}
+                                className="col-span-3"
+                            />
+                        </div>
+                    )}
 
-                    {/* Cost Saving (read-only, auto-calculated) */}
-                    {costSaving !== undefined && (
+                    {/* Cost Saving (read-only, auto-calculated) - Hide in simple finish */}
+                    {costSaving !== undefined && !simpleFinish && (
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label className="text-right">
                                 Cost Saving
