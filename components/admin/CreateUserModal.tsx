@@ -21,6 +21,7 @@ import {
 export default function CreateUserModal({ onUserCreated }: { onUserCreated: () => void }) {
     const [loading, setLoading] = useState(false)
     const [open, setOpen] = useState(false)
+    const [position, setPosition] = useState("")
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault()
@@ -76,15 +77,17 @@ export default function CreateUserModal({ onUserCreated }: { onUserCreated: () =
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="position">Position</Label>
-                        <Select name="position" required>
+                        {/* Hidden input to ensure FormData captures the value */}
+                        <input type="hidden" name="position" value={position} />
+                        <Select name="position" required onValueChange={setPosition}>
                             <SelectTrigger id="position">
                                 <SelectValue placeholder="Select a position" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="contract_analyst">Contract Analyst</SelectItem>
-                                <SelectItem value="procurement_manager">Procurement Manager</SelectItem>
-                                <SelectItem value="proclog_division_head">Procurement & Logistic Division Head</SelectItem>
-                                <SelectItem value="data_system_analyst">Data & System Analyst</SelectItem>
+                                <SelectItem value="Contract Analyst">Contract Analyst</SelectItem>
+                                <SelectItem value="Procurement Manager">Procurement Manager</SelectItem>
+                                <SelectItem value="Procurement & Logistic Division Head">Procurement & Logistic Division Head</SelectItem>
+                                <SelectItem value="Data & System Analyst">Data & System Analyst</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

@@ -21,12 +21,25 @@ export async function resetUserPassword(userId: string, newPassword: string) {
     return { success: true }
 }
 
+// Helper to validate email format
+function isValidEmail(email: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export async function createNewUser(formData: {
-    email?: string, // Marked as optional
+    email?: string,
     password: string,
     full_name: string,
     position: string
 }) {
+    console.log("[Admin Action] Creating new user:", { ...formData, password: "***" });
+
+    // 0. Safety Check
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.error("[Admin Action] Missing SUPABASE_SERVICE_ROLE_KEY");
+        throw new Error("Server configuration error: Missing Service Role Key");
+    }
+
     // 1. Generate system email if email is empty or missing
     let finalEmail = formData.email;
 
@@ -35,8 +48,12 @@ export async function createNewUser(formData: {
         const username = formData.full_name
             .toLowerCase()
             .trim()
-            .replace(/\s+/g, '_');
+            .replace(/[^a-z0-9]/g, '_'); // Replace non-alphanumeric with underscore
         finalEmail = `${username}@system.local`;
+    } else {
+        if (!isValidEmail(finalEmail)) {
+            throw new Error("Invalid email format provided.");
+        }
     }
 
     // 2. Create the user in Supabase Auth
@@ -44,10 +61,16 @@ export async function createNewUser(formData: {
         email: finalEmail,
         password: formData.password,
         email_confirm: true, // Auto-confirm so they can log in immediately
-        user_metadata: { full_name: formData.full_name }
     })
 
-    if (authError) throw new Error(authError.message)
+    if (authError) {
+        console.error("[Admin Action] Auth Create Error:", authError);
+        throw new Error(`Auth Error: ${authError.message}`);
+    }
+
+    if (!authUser?.user) {
+        throw new Error("User created but no user object returned.");
+    }
 
     // 3. Insert into your public.profiles table
     const { error: profileError } = await supabaseAdmin
@@ -62,11 +85,12 @@ export async function createNewUser(formData: {
         ])
 
     if (profileError) {
+        console.error("[Admin Action] Profile Insert Error:", profileError);
         // Clean up Auth user if profile creation fails to prevent orphaned accounts
         await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
-        throw new Error(profileError.message);
+        throw new Error(`Profile Error: ${profileError.message}`);
     }
 
-    revalidatePath("/admin/users")
+    revalidatePath("/dashboard/admin/users")
     return { success: true }
 }

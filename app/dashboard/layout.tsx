@@ -85,8 +85,8 @@ export default function DashboardLayout({
                             <>
                                 <div className="mt-4 px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">System</div>
                                 <Link
-                                    href="/admin/users"
-                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/admin/users") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
+                                    href="/dashboard/admin/users"
+                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/dashboard/admin/users") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
                                         }`}
                                 >
                                     <Users className="h-4 w-4" />
@@ -138,11 +138,14 @@ export default function DashboardLayout({
             </aside>
 
             <div className="flex flex-col flex-1">
-                <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6 lg:h-[60px]">
-                    <h1 className="text-lg font-semibold capitalize">
-                        {pathname.split('/').pop()?.replace(/-/g, ' ')}
-                    </h1>
-                </header>
+                {/* Hide header on contract detail page so ContractHeader takes over */}
+                {(!pathname.includes('/ongoing/') || pathname.endsWith('/create') || pathname.endsWith('/ongoing')) && (
+                    <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6 lg:h-[60px]">
+                        <h1 className="text-lg font-semibold capitalize">
+                            {pathname.split('/').pop()?.replace(/-/g, ' ')}
+                        </h1>
+                    </header>
+                )}
                 <main className="flex-1 overflow-auto p-4 lg:p-6">
                     {children}
                 </main>
