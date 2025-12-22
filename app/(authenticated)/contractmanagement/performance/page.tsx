@@ -1,5 +1,7 @@
 "use client"
 
+import { useRouter } from "next/navigation"
+
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -39,6 +41,7 @@ type PicPerformance = {
 export default function PerformancePage() {
     const [contracts, setContracts] = useState<ContractData[]>([])
     const [loading, setLoading] = useState(true)
+    const router = useRouter()
 
     useEffect(() => {
         fetchData()
@@ -178,7 +181,10 @@ export default function PerformancePage() {
                 </div>
             </div>
 
-            <ContractNav />
+            <ContractNav
+                activeTab="performance"
+                onTabChange={(tab) => router.push(`/contractmanagement?tab=${tab}`)}
+            />
 
             {/* Summary Cards */}
             <div className="grid gap-4 md:grid-cols-4">

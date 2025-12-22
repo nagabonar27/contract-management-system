@@ -10,6 +10,8 @@ import { Trash2, Pencil, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { VendorEvaluationRows } from "./VendorEvaluationRows"
 import { ISODateInput } from "@/components/ui/iso-date-input"
+import { DateRangePicker, DateRange } from "@/components/DatePicker"
+import { format, parseISO } from "date-fns"
 
 // Export types for use in other components
 export interface AgendaItem {
@@ -122,8 +124,7 @@ export function BidAgendaSection({
                         <thead className="bg-muted/50">
                             <tr className="border-b">
                                 <th className="h-10 px-4 text-left font-medium w-1/3">Step</th>
-                                <th className="h-10 px-4 text-left font-medium">Start</th>
-                                <th className="h-10 px-4 text-left font-medium">End</th>
+                                <th className="h-10 px-4 text-left font-medium w-[300px]">Timeline</th>
                                 <th className="h-10 px-4 text-left font-medium">Details / Remarks</th>
                                 {isEditingAgenda && <th className="h-10 px-4 text-right">Action</th>}
                             </tr>
@@ -131,7 +132,7 @@ export function BidAgendaSection({
                         <tbody>
                             {agendaList.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="p-4 text-center">No steps added.</td>
+                                    <td colSpan={4} className="p-4 text-center">No steps added.</td>
                                 </tr>
                             )}
                             {agendaList.map((item, index) => {
@@ -194,34 +195,26 @@ export function BidAgendaSection({
                                                         <span className="text-muted-foreground">{item.end_date || item.start_date || "-"}</span>
                                                     )
                                                 ) : isEditingAgenda ? (
-                                                    <ISODateInput
-                                                        value={item.start_date || ""}
-                                                        onChange={val => onUpdateAgendaItem(item.id, 'start_date', val)}
-                                                        className="w-[140px] h-8 text-xs"
-                                                    />
+                                                    <div className="flex justify-center">
+                                                        <DateRangePicker
+                                                            className="w-[240px]"
+                                                            value={{
+                                                                from: item.start_date ? parseISO(item.start_date) : undefined,
+                                                                to: item.end_date ? parseISO(item.end_date) : undefined,
+                                                            }}
+                                                            onChange={(value: DateRange | undefined) => {
+                                                                const startDate = value?.from ? format(value.from, 'yyyy-MM-dd') : ""
+                                                                const endDate = value?.to ? format(value.to, 'yyyy-MM-dd') : ""
+                                                                onUpdateAgendaItem(item.id, 'start_date', startDate)
+                                                                onUpdateAgendaItem(item.id, 'end_date', endDate)
+                                                            }}
+                                                        />
+                                                    </div>
                                                 ) : (
-                                                    <span className="text-muted-foreground">{item.start_date || "-"}</span>
-                                                )}
-                                            </td>
-                                            <td className="p-4 align-top">
-                                                {(isVendorFindings || isKYC || isClarification || isPrice || isRevisedPrice) ? (
-                                                    <span className="text-muted-foreground text-xs italic">Per vendor</span>
-                                                ) : item.step_name.includes("Completed") ? (
-                                                    <span className="text-muted-foreground text-xs italic">Same as start</span>
-                                                ) : isEditingAgenda ? (
-                                                    <ISODateInput
-                                                        value={item.end_date || ""}
-                                                        onChange={val => {
-                                                            // Auto-fill start_date if not set
-                                                            if (val && (!item.start_date || item.start_date === "")) {
-                                                                onUpdateAgendaItem(item.id, 'start_date', val)
-                                                            }
-                                                            onUpdateAgendaItem(item.id, 'end_date', val)
-                                                        }}
-                                                        className="w-[140px] h-8 text-xs"
-                                                    />
-                                                ) : (
-                                                    <span className="text-muted-foreground">{item.end_date || "-"}</span>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-xs text-muted-foreground">Start: {item.start_date || "-"}</span>
+                                                        <span className="text-xs text-muted-foreground">End: {item.end_date || "-"}</span>
+                                                    </div>
                                                 )}
                                             </td>
                                             <td className="p-4 align-top">
@@ -293,7 +286,7 @@ export function BidAgendaSection({
                                         {/* Vendor Findings Sub-Section */}
                                         {isVendorFindings && (
                                             <tr>
-                                                <td colSpan={5} className="px-4 pb-4 pt-0 bg-muted/10">
+                                                <td colSpan={4} className="px-4 pb-4 pt-0 bg-muted/10">
                                                     <div className="p-4 border border-t-0 rounded-b-md space-y-3">
                                                         <div className="flex items-center gap-2">
                                                             <Button

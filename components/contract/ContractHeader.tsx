@@ -40,10 +40,13 @@ interface ContractHeaderProps {
         contract_type_name: string
         effective_date: string
         expiry_date: string
+        created_by?: string
     }
     categoryOptions: Option[]
     ptOptions: Option[]
     typeOptions: Option[]
+    userOptions: Option[]
+    userPosition: string | null
     onEditToggle: () => void
     onFormChange: (updates: Partial<ContractHeaderProps['editForm']>) => void
     onSave: () => void
@@ -82,6 +85,8 @@ export function ContractHeader({
     isAnticipated,
     onStatusChange,
     hasAmendmentInProgress = false,
+    userOptions = [],
+    userPosition = null,
 }: ContractHeaderProps) {
     const getBadgeVariant = () => {
         if (isActive) return 'default'
@@ -250,23 +255,49 @@ export function ContractHeader({
                         </div>
                         <div className="grid gap-2">
                             <Label>Division</Label>
-                            <select
+                            <Combobox
+                                options={[
+                                    { label: "HRGA", value: "HRGA" },
+                                    { label: "TECH", value: "TECH" },
+                                    { label: "EXT", value: "EXT" },
+                                    { label: "OPS", value: "OPS" },
+                                    { label: "PROC", value: "PROC" },
+                                    { label: "LGL", value: "LGL" },
+                                    { label: "FIN", value: "FIN" },
+                                    { label: "PLNT", value: "PLNT" },
+                                    { label: "MGMT", value: "MGMT" },
+                                ]}
                                 value={editForm.division}
-                                onChange={e => onFormChange({ division: e.target.value })}
-                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                <option value="">Select Division</option>
-                                <option value="HRGA">HRGA</option>
-                                <option value="TECH">TECH</option>
-                                <option value="EXT">EXT</option>
-                                <option value="OPS">OPS</option>
-                                <option value="PROC">PROC</option>
-                                <option value="LGL">LGL</option>
-                                <option value="FIN">FIN</option>
-                                <option value="PLNT">PLNT</option>
-                                <option value="MGMT">MGMT</option>
-                            </select>
+                                onSelect={val => onFormChange({ division: val })}
+                            />
                         </div>
+                        {(userPosition === 'admin' || userPosition === 'Data & System Analyst') && (
+                            <div className="grid gap-2">
+                                <Label>Created By (Admin Override)</Label>
+                                <Combobox
+                                    options={userOptions}
+                                    value={userOptions.find(u => u.value === editForm.created_by)?.label || editForm.created_by || ""}
+                                    onSelect={val => {
+                                        // val is the label from Combobox, we need the value (ID)
+                                        // Actually Combobox onSelect returns the value if we set it, or label?
+                                        // Checking shared/combobox usage. Usually it returns the value passed in options.
+                                        // But here options: { label: name, value: id }.
+                                        // Wait, Combobox implementation varies.
+                                        // In standard shadcn combobox: value is the value.
+                                        // Let's assume onSelect returns the 'value'.
+                                        // But wait, look at typeOptions usage:
+                                        // onSelect={val => onFormChange({ contract_type_name: val })}
+                                        // typeOptions = { label: name, value: name } in page.tsx!
+                                        // Ah, in page.tsx: typeOptions.map(t => ({ label: t.name, value: t.name })) !!
+                                        // So existing code passes NAME as value.
+                                        // For User, I want ID.
+                                        // So userOptions should be { label: Name, value: ID }.
+                                        // If I select, I get ID.
+                                        onFormChange({ created_by: val })
+                                    }}
+                                />
+                            </div>
+                        )}
                         <div className="grid gap-2">
                             <Label>Department</Label>
                             <Input

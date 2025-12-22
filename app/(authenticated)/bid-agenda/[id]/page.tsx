@@ -40,6 +40,7 @@ type ContractData = {
     is_on_hold: boolean | null
     is_anticipated: boolean | null
     appointed_vendor: string | null
+    created_by: string | null
 }
 
 
@@ -84,6 +85,7 @@ export default function ContractDetailPage() {
     ])
     const [ptOptions, setPtOptions] = useState<Option[]>([])
     const [typeOptions, setTypeOptions] = useState<Option[]>([])
+    const [userOptions, setUserOptions] = useState<Option[]>([])
 
     // Edit Header State
     const [isEditingHeader, setIsEditingHeader] = useState(false)
@@ -97,7 +99,8 @@ export default function ContractDetailPage() {
         contract_type_id: 0,
         contract_type_name: "",
         effective_date: "",
-        expiry_date: ""
+        expiry_date: "",
+        created_by: ""
     })
 
     // Status checkboxes state
@@ -171,7 +174,9 @@ export default function ContractDetailPage() {
                     is_cr,
                     is_on_hold,
                     is_anticipated,
-                    appointed_vendor
+                    is_anticipated,
+                    appointed_vendor,
+                    created_by
                 `)
                 .eq('id', id)
                 .single()
@@ -209,7 +214,8 @@ export default function ContractDetailPage() {
                     contract_type_id: typeId,
                     contract_type_name: typeName,
                     effective_date: contractData.effective_date || "",
-                    expiry_date: contractData.expiry_date || ""
+                    expiry_date: contractData.expiry_date || "",
+                    created_by: contractData.created_by || ""
                 })
 
                 if (contractData) {
@@ -229,6 +235,10 @@ export default function ContractDetailPage() {
             // Fetch Type options
             const { data: typeData } = await supabase.from('contract_types').select('id, name')
             if (typeData) setTypeOptions(typeData.map(t => ({ label: t.name, value: t.name })))
+
+            // Fetch User options
+            const { data: profileData } = await supabase.from('profiles').select('id, full_name').order('full_name')
+            if (profileData) setUserOptions(profileData.map(p => ({ label: p.full_name || "Unknown", value: p.id })))
 
             setLoading(false)
         }
@@ -278,7 +288,8 @@ export default function ContractDetailPage() {
             expiry_date: (isActive && editForm.expiry_date) ? editForm.expiry_date : contract.expiry_date,
             is_cr: isCR,
             is_on_hold: isOnHold,
-            is_anticipated: isAnticipated
+            is_anticipated: isAnticipated,
+            created_by: editForm.created_by || contract.created_by // Only update if set
         }).eq('id', id)
 
         if (error) alert(error.message)
@@ -289,8 +300,11 @@ export default function ContractDetailPage() {
                 category: editForm.category,
                 division: editForm.division,
                 department: editForm.department,
-                effective_date: (isActive && editForm.effective_date) ? editForm.effective_date : prev.effective_date,
-                expiry_date: (isActive && editForm.expiry_date) ? editForm.expiry_date : prev.expiry_date
+                expiry_date: (isActive && editForm.expiry_date) ? editForm.expiry_date : prev.expiry_date,
+                created_by: editForm.created_by || prev.created_by,
+                // Optimistically update profile name if possible, or wait for refresh.
+                // For now, next refresh will catch it.
+                profiles: userOptions.find(u => u.value === editForm.created_by) ? { full_name: userOptions.find(u => u.value === editForm.created_by)!.label } : prev.profiles
             } : null)
             setIsEditingHeader(false)
         }
@@ -538,7 +552,8 @@ export default function ContractDetailPage() {
                     contract_type_id: contractData.contract_types?.id || 0,
                     contract_type_name: contractData.contract_types?.name || "",
                     effective_date: contractData.effective_date || "",
-                    expiry_date: contractData.expiry_date || ""
+                    expiry_date: contractData.expiry_date || "",
+                    created_by: contractData.created_by || ""
                 })
             }
 
@@ -617,6 +632,8 @@ export default function ContractDetailPage() {
                     if (field === 'is_on_hold') setIsOnHold(value)
                     if (field === 'is_anticipated') setIsAnticipated(value)
                 }}
+                userOptions={userOptions}
+                userPosition={userPosition}
             />
 
             {/* GANTT CHART - Project Timeline */}
