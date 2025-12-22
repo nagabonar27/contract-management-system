@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Eye, FileEdit, AlertTriangle } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { ContractNav } from "@/components/contract/ContractNav"
+import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
+import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 
 interface ExpiringContract {
     id: string
@@ -24,13 +26,43 @@ interface ExpiringContract {
 
 export default function ExpiringContractsPage() {
     const router = useRouter()
+    const supabase = createClientComponentClient()
     const [contracts, setContracts] = useState<ExpiringContract[]>([])
     const [loading, setLoading] = useState(true)
     const [criticalCount, setCriticalCount] = useState(0)
+    const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set())
+
+    // Amendment State
+    const [isAmendModalOpen, setIsAmendModalOpen] = useState(false)
+    const [selectedContractForAmend, setSelectedContractForAmend] = useState<ExpiringContract | null>(null)
+    const [isCreatingAmendment, setIsCreatingAmendment] = useState(false)
+
+    // Finish State
+    const [isFinishModalOpen, setIsFinishModalOpen] = useState(false)
+    const [selectedContractForFinish, setSelectedContractForFinish] = useState<ExpiringContract | null>(null)
+    const [finishContractNumber, setFinishContractNumber] = useState("")
+    const [finishEffectiveDate, setFinishEffectiveDate] = useState("")
+    const [finishExpiryDate, setFinishExpiryDate] = useState("")
+    const [finishRemarks, setFinishRemarks] = useState("")
+    const [finishReferenceNumber, setFinishReferenceNumber] = useState("")
 
     useEffect(() => {
         fetchExpiringContracts()
+        checkAmendmentsInProgress()
     }, [])
+
+    const checkAmendmentsInProgress = async () => {
+        const { data } = await supabase
+            .from('contracts')
+            .select('parent_contract_id')
+            .eq('status', 'On Progress')
+            .not('parent_contract_id', 'is', null)
+
+        if (data) {
+            const parentIds = new Set(data.map(d => d.parent_contract_id as string))
+            setContractsWithAmendment(parentIds)
+        }
+    }
 
     const fetchExpiringContracts = async () => {
         setLoading(true)
@@ -97,15 +129,140 @@ export default function ExpiringContractsPage() {
     }
 
     const handleViewContract = (id: string) => {
-        router.push(`/dashboard/contractmanagement/ongoing/${id}`)
+        router.push(`/bid-agenda/${id}`)
     }
 
-    const handleCreateAmendment = (id: string) => {
-        router.push(`/contract-management/active/${id}/amend`)
+    const handleAmendClick = (contract: ExpiringContract) => {
+        setSelectedContractForAmend(contract)
+        setIsAmendModalOpen(true)
     }
 
-    const handleRenew = (id: string) => {
-        router.push(`/contract-management/active/${id}/amend`)
+    const handleConfirmAmend = async (reason: string) => {
+        if (!selectedContractForAmend) return
+
+        try {
+            setIsCreatingAmendment(true)
+            const original = selectedContractForAmend
+
+            // Fetch full details
+            const { data: fullOriginal, error: fetchError } = await supabase
+                .from('contracts')
+                .select('*')
+                .eq('id', original.id)
+                .single()
+
+            if (fetchError) throw fetchError
+
+            const newVersion = (fullOriginal.version || 0) + 1
+            const amendmentData = {
+                title: `${fullOriginal.title} - Amendment ${newVersion}`,
+                contract_number: fullOriginal.contract_number,
+                status: 'On Progress',
+                parent_contract_id: fullOriginal.id,
+                version: newVersion,
+                category: fullOriginal.category,
+                contract_type_id: fullOriginal.contract_type_id,
+                division: fullOriginal.division,
+                department: fullOriginal.department,
+                contract_summary: `Amendment Reason: ${reason}`,
+                effective_date: null,
+                expiry_date: null
+            }
+
+            // @ts-ignore
+            delete amendmentData.id
+            // @ts-ignore
+            delete amendmentData.created_at
+            // @ts-ignore
+            delete amendmentData.updated_at
+
+            const { data: newContract, error: insertError } = await supabase
+                .from('contracts')
+                .insert(amendmentData)
+                .select()
+                .single()
+
+            if (insertError) throw insertError
+
+            // Copy Vendors
+            const { data: vendors } = await supabase
+                .from('contract_vendors')
+                .select('*')
+                .eq('contract_id', original.id)
+
+            if (vendors && vendors.length > 0) {
+                const vendorsToInsert = vendors.map(v => ({
+                    contract_id: newContract.id,
+                    vendor_name: v.vendor_name,
+                    pic_name: v.pic_name,
+                    pic_phone: v.pic_phone,
+                    pic_email: v.pic_email,
+                    is_appointed: v.is_appointed,
+                    price_note: v.price_note,
+                    tech_eval_note: v.tech_eval_note,
+                    kyc_note: v.kyc_note
+                }))
+                await supabase.from('contract_vendors').insert(vendorsToInsert)
+            }
+
+            // Create Default Amendment Agenda
+            const amendmentSteps = ["Drafting Amendment", "Review Amendment", "Internal Contract Signature Process", "Vendor Contract Signature Process"]
+            const agendaItems = amendmentSteps.map(step => ({
+                contract_id: newContract.id,
+                step_name: step,
+                status: 'Pending'
+            }))
+            await supabase.from('contract_bid_agenda').insert(agendaItems)
+
+            setIsAmendModalOpen(false)
+            router.push(`/dashboard/contractmanagement/ongoing/${newContract.id}`)
+
+        } catch (error: any) {
+            console.error("Error creating amendment:", error)
+            alert("Failed to create amendment: " + error.message)
+        } finally {
+            setIsCreatingAmendment(false)
+        }
+    }
+
+    const handleFinishClick = (contract: ExpiringContract) => {
+        setSelectedContractForFinish(contract)
+        setFinishContractNumber(contract.contract_number)
+        setFinishEffectiveDate(contract.effective_date || "")
+        setFinishExpiryDate(contract.expiry_date || "")
+        setFinishRemarks("")
+        setFinishReferenceNumber("")
+        setIsFinishModalOpen(true)
+    }
+
+    const handleConfirmFinish = async () => {
+        if (!selectedContractForFinish) return
+
+        try {
+            const updates = {
+                contract_number: finishContractNumber,
+                effective_date: finishEffectiveDate,
+                expiry_date: finishExpiryDate,
+                contract_summary: finishRemarks,
+                reference_contract_number: finishReferenceNumber,
+                status: 'Completed'
+            }
+
+            const { error } = await supabase
+                .from('contracts')
+                .update(updates)
+                .eq('id', selectedContractForFinish.id)
+
+            if (error) throw error
+
+            setIsFinishModalOpen(false)
+            fetchExpiringContracts()
+            alert("Contract updated/finished successfully!")
+
+        } catch (error: any) {
+            console.error("Error finishing contract:", error)
+            alert("Failed to finish contract: " + error.message)
+        }
     }
 
     return (
@@ -227,16 +384,20 @@ export default function ExpiringContractsPage() {
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuItem onClick={() => handleViewContract(contract.id)}>
                                                             <Eye className="mr-2 h-4 w-4" />
-                                                            View Contract
+                                                            Open Bid Agenda
                                                         </DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => handleCreateAmendment(contract.id)}>
-                                                            <FileEdit className="mr-2 h-4 w-4" />
-                                                            Create Amendment
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => handleRenew(contract.id)}>
-                                                            <FileEdit className="mr-2 h-4 w-4" />
-                                                            Renew Contract
-                                                        </DropdownMenuItem>
+                                                        {!contractsWithAmendment.has(contract.id) && (
+                                                            <>
+                                                                <DropdownMenuItem onClick={() => handleAmendClick(contract)}>
+                                                                    <FileEdit className="mr-2 h-4 w-4" />
+                                                                    Amend
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => handleFinishClick(contract)}>
+                                                                    <FileEdit className="mr-2 h-4 w-4" />
+                                                                    Finish
+                                                                </DropdownMenuItem>
+                                                            </>
+                                                        )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </TableCell>
@@ -248,6 +409,33 @@ export default function ExpiringContractsPage() {
                     )}
                 </CardContent>
             </Card>
-        </div>
+
+
+            <AmendWorkflowModal
+                open={isAmendModalOpen}
+                onOpenChange={setIsAmendModalOpen}
+                contractTitle={selectedContractForAmend?.title || ""}
+                onConfirm={handleConfirmAmend}
+                isCreating={isCreatingAmendment}
+            />
+
+            <FinalizeContractModal
+                open={isFinishModalOpen}
+                onOpenChange={setIsFinishModalOpen}
+                contractNumber={finishContractNumber}
+                effectiveDate={finishEffectiveDate}
+                expiryDate={finishExpiryDate}
+                contractSummary={finishRemarks}
+                onContractNumberChange={setFinishContractNumber}
+                onEffectiveDateChange={setFinishEffectiveDate}
+                onExpiryDateChange={setFinishExpiryDate}
+                onContractSummaryChange={setFinishRemarks}
+                onFinalize={handleConfirmFinish}
+                isAmendment={false} // Expiring usually generic
+                referenceContractNumber={finishReferenceNumber}
+                onReferenceNumberChange={setFinishReferenceNumber}
+                simpleFinish={true}
+            />
+        </div >
     )
 }

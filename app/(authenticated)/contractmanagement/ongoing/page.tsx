@@ -13,18 +13,11 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs" // FIXED IMPORT
 import { ContractNav } from "@/components/contract/ContractNav"
 import { calculatePriceDifference, formatCurrency } from "@/lib/contractUtils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-    PieChart,
-    Pie,
-    Cell,
-    ResponsiveContainer,
-    Tooltip,
-    Legend
-} from "recharts"
+import { InteractivePieChart } from "@/components/charts/InteractivePieChart"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -121,7 +114,8 @@ export default function OngoingContractsPage() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
     const router = useRouter()
 
-
+    // Create the cookie-aware Supabase client
+    const supabase = createClientComponentClient()
 
     const fetchTasks = async () => {
         try {
@@ -147,7 +141,8 @@ export default function OngoingContractsPage() {
                     contract_types ( name ),
                     profiles:profiles!contracts_created_by_profile_fkey ( full_name ),
                     contract_bid_agenda ( step_name, start_date, end_date, updated_at, remarks ),
-                    contract_vendors ( vendor_name, price_note, revised_price_note )
+                    contract_vendors ( vendor_name, price_note, revised_price_note ),
+                    appointed_vendor
                 `)
                 .neq('status', 'Active') // Excluding Active as it appears as "Completed" in this context
                 .order('created_at', { ascending: false })
@@ -174,7 +169,7 @@ export default function OngoingContractsPage() {
                     parent_contract_id: item.parent_contract_id,
                     contract_bid_agenda: item.contract_bid_agenda,
                     contract_vendors: item.contract_vendors,
-                    appointed_vendor: getAppointedVendor(item.contract_bid_agenda),
+                    appointed_vendor: item.appointed_vendor || getAppointedVendor(item.contract_bid_agenda),
                     version: item.version,
 
                     department: item.department
@@ -193,8 +188,6 @@ export default function OngoingContractsPage() {
         fetchTasks()
     }, [])
 
-
-
     return (
         <div className="container mx-auto p-6 space-y-6">
             <div className="flex items-center justify-between">
@@ -206,7 +199,7 @@ export default function OngoingContractsPage() {
                 </div>
                 <div className="flex items-center space-x-2">
                     <Button asChild>
-                        <Link href="/dashboard/contractmanagement/ongoing/create">
+                        <Link href="/contractmanagement/ongoing/create">
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Create Contract
                         </Link>
@@ -217,6 +210,7 @@ export default function OngoingContractsPage() {
             <ContractNav />
 
             {/* Visualizations - Recharts */}
+            {/* Visualizations - Interactive Charts */}
             {
                 (() => {
                     const countBy = (arr: ContractTable[], key: keyof ContractTable) => {
@@ -228,59 +222,41 @@ export default function OngoingContractsPage() {
                         return Object.entries(counts).map(([name, value]) => ({ name, value }))
                     }
 
-                    const userData = countBy(tasks, 'user_name')
-                    const divisionData = countBy(tasks, 'division')
-                    const categoryData = countBy(tasks, 'category')
+                    const userData = countBy(tasks, 'user_name').map((item, index) => ({
+                        ...item,
+                        fill: PALETTE_COLORS[index % PALETTE_COLORS.length]
+                    }))
 
-                    const renderPieChart = (title: string, data: { name: string; value: number }[], colorStrategy: 'division' | 'hash' = 'hash') => (
-                        <Card>
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">{title}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-[200px]">
-                                    {data.length > 0 ? (
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={data}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={60}
-                                                    outerRadius={80}
-                                                    fill="#8884d8"
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                >
-                                                    {data.map((entry, index) => {
-                                                        let color = PALETTE_COLORS[index % PALETTE_COLORS.length]
-                                                        if (colorStrategy === 'division') {
-                                                            color = DIVISION_COLOR_MAP[entry.name] || getColorForString(entry.name)
-                                                        } else {
-                                                            color = getColorForString(entry.name)
-                                                        }
-                                                        return <Cell key={`cell-${index}`} fill={color} />
-                                                    })}
-                                                </Pie>
-                                                <Tooltip />
-                                                <Legend verticalAlign="bottom" height={36} />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                    ) : (
-                                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                                            No data available
-                                        </div>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )
+                    const divisionData = countBy(tasks, 'division').map((item, index) => ({
+                        ...item,
+                        fill: DIVISION_COLOR_MAP[item.name] || getColorForString(item.name)
+                    }))
+
+                    const categoryData = countBy(tasks, 'category').map((item, index) => ({
+                        ...item,
+                        fill: PALETTE_COLORS[(index + 3) % PALETTE_COLORS.length] // Shift colors slightly
+                    }))
 
                     return (
                         <div className="grid gap-4 md:grid-cols-3 mb-6">
-                            {renderPieChart("Contracts by User", userData, 'hash')}
-                            {renderPieChart("Contracts by Division", divisionData, 'division')}
-                            {renderPieChart("Contracts by Category", categoryData, 'hash')}
+                            <InteractivePieChart
+                                title="Contracts by User"
+                                description="Distribution by PIC"
+                                data={userData}
+                                label="Contracts"
+                            />
+                            <InteractivePieChart
+                                title="Contracts by Division"
+                                description="Distribution by Requesting Division"
+                                data={divisionData}
+                                label="Contracts"
+                            />
+                            <InteractivePieChart
+                                title="Contracts by Category"
+                                description="Distribution by Procurement Category"
+                                data={categoryData}
+                                label="Contracts"
+                            />
                         </div>
                     )
                 })()
@@ -393,12 +369,15 @@ export default function OngoingContractsPage() {
                                             {(task.contract_types?.name || '-')}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant={task.status === 'On Progress' ? "secondary" : "outline"}>
+                                            <Badge
+                                                variant={task.status === 'On Progress' ? "secondary" : "outline"}
+                                                className={task.status === 'Completed' ? "bg-green-100 text-green-800 border-green-200" : ""}
+                                            >
                                                 {task.status}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="max-w-[200px] truncate" title={task.current_step || undefined}>
-                                            <Link href={`/dashboard/contractmanagement/ongoing/${task.id}`} className="hover:underline">
+                                            <Link href={`/bid-agenda/${task.id}`} className="hover:underline">
                                                 {task.current_step || <span className="text-muted-foreground italic text-xs">Not started</span>}
                                             </Link>
                                         </TableCell>
@@ -413,7 +392,7 @@ export default function OngoingContractsPage() {
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem asChild>
-                                                        <Link href={`/dashboard/contractmanagement/ongoing/${task.id}`}>
+                                                        <Link href={`/bid-agenda/${task.id}`}>
                                                             Open
                                                         </Link>
                                                     </DropdownMenuItem>

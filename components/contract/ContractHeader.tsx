@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Combobox, Option } from "@/components/ui/shared/combobox"
 import { FilePenLine, FileCheck } from "lucide-react"
 
@@ -25,6 +25,7 @@ interface ContractHeaderProps {
         vendor_2?: string | null
         vendor_3?: string | null
         appointed_vendor?: string | null
+        createdBy?: string | null
     } | null
     displayStatus: string
     isActive: boolean
@@ -50,6 +51,7 @@ interface ContractHeaderProps {
     onFinish: () => void
     onAmend: () => void
     onExtend: () => void
+    onRevert?: () => void
     // Status checkboxes
     isCR?: boolean
     isOnHold?: boolean
@@ -74,6 +76,7 @@ export function ContractHeader({
     onFinish,
     onAmend,
     onExtend,
+    onRevert,
     isCR,
     isOnHold,
     isAnticipated,
@@ -128,7 +131,12 @@ export function ContractHeader({
                         {isAnticipated && <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Anticipated</Badge>}
                     </CardTitle>
                     <div className="text-sm text-muted-foreground space-y-1">
-                        <div>ID: {contract?.id}</div>
+                        <div className="flex gap-4">
+                            <span>ID: {contract?.id}</span>
+                            {contract?.createdBy && (
+                                <span className="text-gray-500">• Created by <span className="font-medium text-gray-700">{contract.createdBy}</span></span>
+                            )}
+                        </div>
                         {contract?.contract_number && (
                             <div className="font-medium text-blue-600">
                                 Contract #: {contract.contract_number}
@@ -152,12 +160,24 @@ export function ContractHeader({
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onClick={onAmend}>
-                                            Amend Contract
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={onFinish}>
-                                            Finish Contract
-                                        </DropdownMenuItem>
+                                        {(displayStatus === 'Active' || displayStatus === 'Expired') && (
+                                            <>
+                                                <DropdownMenuItem onClick={onAmend}>
+                                                    Amend Contract
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={onFinish}>
+                                                    Finish Contract
+                                                </DropdownMenuItem>
+                                            </>
+                                        )}
+                                        {onRevert && (
+                                            <>
+                                                {(displayStatus === 'Active' || displayStatus === 'Expired') && <DropdownMenuSeparator />}
+                                                <DropdownMenuItem onClick={onRevert} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                                    Revert to Progress
+                                                </DropdownMenuItem>
+                                            </>
+                                        )}
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
@@ -382,7 +402,7 @@ export function ContractHeader({
                         )}
                         {(contract?.appointed_vendor || contract?.vendor || contract?.vendor_2 || contract?.vendor_3) && (
                             <div className="col-span-2">
-                                <span className="block text-muted-foreground">Appointed Vendors</span>
+                                <span className="block text-muted-foreground">Appointed Vendor</span>
                                 <span className="font-medium">
                                     {contract.appointed_vendor || [contract.vendor, contract.vendor_2, contract.vendor_3].filter(Boolean).join(", ")}
                                 </span>

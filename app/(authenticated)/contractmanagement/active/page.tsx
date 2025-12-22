@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -41,6 +41,7 @@ interface ActiveContract {
 
 export default function ActiveContractsPage() {
     const router = useRouter()
+    const supabase = createClientComponentClient()
     const [contracts, setContracts] = useState<ActiveContract[]>([])
     const [filteredContracts, setFilteredContracts] = useState<ActiveContract[]>([])
     const [loading, setLoading] = useState(true)
@@ -135,15 +136,9 @@ export default function ActiveContractsPage() {
     }
 
     const applyFilter = (filter: string) => {
-        const today = new Date().toISOString().split('T')[0]
-
         let filtered = contracts
 
-        if (filter === 'not_expired') {
-            filtered = contracts.filter(c => c.expiry_date && c.expiry_date >= today)
-        } else if (filter === 'expired') {
-            filtered = contracts.filter(c => c.expiry_date && c.expiry_date < today)
-        } else if (filter === 'has_amendments') {
+        if (filter === 'has_amendments') {
             filtered = contracts.filter(c => c.parent_contract_id !== null)
         }
 
@@ -190,7 +185,7 @@ export default function ActiveContractsPage() {
     }
 
     const handleViewContract = (id: string) => {
-        router.push(`/dashboard/contractmanagement/ongoing/${id}`)
+        router.push(`/bid-agenda/${id}`)
     }
 
     const handleAmendClick = (contract: ActiveContract) => {
@@ -358,12 +353,6 @@ export default function ActiveContractsPage() {
             <Tabs value={activeFilter} onValueChange={setActiveFilter} className="w-full">
                 <TabsList>
                     <TabsTrigger value="all">All ({contracts.length})</TabsTrigger>
-                    <TabsTrigger value="not_expired">
-                        Not Expired ({contracts.filter(c => c.expiry_date && c.expiry_date >= new Date().toISOString().split('T')[0]).length})
-                    </TabsTrigger>
-                    <TabsTrigger value="expired">
-                        Expired ({contracts.filter(c => c.expiry_date && c.expiry_date < new Date().toISOString().split('T')[0]).length})
-                    </TabsTrigger>
                     <TabsTrigger value="has_amendments">
                         Has Amendments ({contracts.filter(c => c.parent_contract_id !== null).length})
                     </TabsTrigger>
@@ -478,7 +467,7 @@ export default function ActiveContractsPage() {
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem onClick={() => handleViewContract(contract.id)}>
                                                                     <Eye className="mr-2 h-4 w-4" />
-                                                                    Open Contract
+                                                                    Open Bid Agenda
                                                                 </DropdownMenuItem>
                                                                 {!contractsWithAmendment.has(contract.id) && (
                                                                     <>

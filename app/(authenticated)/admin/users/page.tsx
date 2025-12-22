@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { isAdmin } from "@/lib/adminUtils"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/context/AuthContext"
@@ -15,12 +15,13 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Loader2 } from "lucide-react"
-import PasswordResetModal from "@/components/admin/PasswordResetModal"
+import EditUserDialog from "@/components/admin/EditUserDialog"
 import CreateUserModal from "@/components/admin/CreateUserModal"
 
 export default function AdminManagementPage() {
     const { user, profile, isLoading } = useAuth()
     const router = useRouter()
+    const supabase = createClientComponentClient()
     const [allUsers, setAllUsers] = useState<any[]>([])
     const [fetchingUsers, setFetchingUsers] = useState(true)
 
@@ -113,7 +114,17 @@ export default function AdminManagementPage() {
                                         </span>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <PasswordResetModal userId={u.id} userName={u.full_name} />
+                                        <div className="flex justify-end">
+                                            <EditUserDialog
+                                                user={{
+                                                    id: u.id,
+                                                    full_name: u.full_name,
+                                                    email: u.email,
+                                                    position: u.position
+                                                }}
+                                                onUserUpdated={fetchUsers}
+                                            />
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))

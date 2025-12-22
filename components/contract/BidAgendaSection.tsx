@@ -29,6 +29,7 @@ export interface VendorStepDate {
     agenda_step_id: string
     start_date: string | null
     end_date: string | null
+    remarks?: string | null
 }
 
 export interface ContractVendor {
@@ -64,6 +65,8 @@ interface BidAgendaSectionProps {
     onAddVendor: (stepId: string) => void  // Updated to accept stepId
     onDeleteVendor: (vendorId: string) => void
     onNewVendorNameChange: (value: string) => void
+    appointedVendorName?: string | null
+    onAppointedVendorChange?: (name: string) => void
 }
 
 export function BidAgendaSection({
@@ -81,6 +84,8 @@ export function BidAgendaSection({
     onAddVendor,
     onDeleteVendor,
     onNewVendorNameChange,
+    appointedVendorName,
+    onAppointedVendorChange,
 }: BidAgendaSectionProps) {
     return (
         <Card>
@@ -119,7 +124,7 @@ export function BidAgendaSection({
                                 <th className="h-10 px-4 text-left font-medium w-1/3">Step</th>
                                 <th className="h-10 px-4 text-left font-medium">Start</th>
                                 <th className="h-10 px-4 text-left font-medium">End</th>
-                                <th className="h-10 px-4 text-left font-medium">Remarks</th>
+                                <th className="h-10 px-4 text-left font-medium">Details / Remarks</th>
                                 {isEditingAgenda && <th className="h-10 px-4 text-right">Action</th>}
                             </tr>
                         </thead>
@@ -223,31 +228,53 @@ export function BidAgendaSection({
                                                 {isClarification ? (
                                                     <span className="text-muted-foreground text-xs italic">Per vendor</span>
                                                 ) : (isAppointedVendor && isEditingAgenda) ? (
-                                                    <Select value={item.remarks || ""} onValueChange={val => onUpdateAgendaItem(item.id, 'remarks', val)}>
-                                                        <SelectTrigger className="h-8 w-full text-xs">
-                                                            <SelectValue placeholder="Select Appointed Vendor" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {vendorList.filter(v => v.kyc_result === 'Pass').map(v => (
-                                                                <SelectItem key={v.id} value={v.vendor_name}>{v.vendor_name}</SelectItem>
-                                                            ))}
-                                                            {vendorList.filter(v => v.kyc_result === 'Pass').length === 0 && (
-                                                                <span className="p-2 text-xs text-muted-foreground">No passed vendors</span>
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
-                                                ) : (
-                                                    isEditingAgenda ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        <Select value={appointedVendorName || ""} onValueChange={val => onAppointedVendorChange?.(val)}>
+                                                            <SelectTrigger className="h-8 w-full text-xs">
+                                                                <SelectValue placeholder="Select Appointed Vendor" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {vendorList.filter(v => v.kyc_result === 'Pass').map(v => (
+                                                                    <SelectItem key={v.id} value={v.vendor_name}>{v.vendor_name}</SelectItem>
+                                                                ))}
+                                                                {vendorList.filter(v => v.kyc_result === 'Pass').length === 0 && (
+                                                                    <span className="p-2 text-xs text-muted-foreground">No passed vendors</span>
+                                                                )}
+                                                            </SelectContent>
+                                                        </Select>
                                                         <Input
                                                             value={item.remarks || ""}
                                                             onChange={e => onUpdateAgendaItem(item.id, 'remarks', e.target.value)}
                                                             className="h-8 text-xs"
-                                                            placeholder="Remarks..."
+                                                            placeholder="Remarks (e.g. Approved by Board)..."
                                                         />
+                                                    </div>
+                                                ) : (
+                                                    isAppointedVendor ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="font-semibold text-xs text-blue-600">Winner: {appointedVendorName || "-"}</div>
+                                                            <span className="text-xs text-muted-foreground">{item.remarks}</span>
+                                                        </div>
                                                     ) : (
-                                                        <span>{item.remarks || "-"}</span>
-                                                    )
-                                                )}
+                                                        isEditingAgenda ? (
+                                                            isVendorFindings ? (
+                                                                <span className="text-muted-foreground text-xs italic">Per vendor</span>
+                                                            ) : (
+                                                                <Input
+                                                                    value={item.remarks || ""}
+                                                                    onChange={e => onUpdateAgendaItem(item.id, 'remarks', e.target.value)}
+                                                                    className="h-8 text-xs"
+                                                                    placeholder="Remarks..."
+                                                                />
+                                                            )
+                                                        ) : (
+                                                            isVendorFindings ? (
+                                                                <span className="text-muted-foreground text-xs italic">Per vendor</span>
+                                                            ) : (
+                                                                <span>{item.remarks || "-"}</span>
+                                                            )
+                                                        )
+                                                    ))}
                                             </td>
                                             {isEditingAgenda && (
                                                 <td className="p-4 align-top text-right">
@@ -355,6 +382,38 @@ export function BidAgendaSection({
                                                                                     className="w-[140px] h-8 text-xs"
                                                                                 />
                                                                             </div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <Label className="text-xs text-muted-foreground whitespace-nowrap">Remarks:</Label>
+                                                                                <Input
+                                                                                    value={(() => {
+                                                                                        const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
+                                                                                        return stepDate?.remarks || ""
+                                                                                    })()}
+                                                                                    onChange={e => {
+                                                                                        const val = e.target.value
+                                                                                        const stepDates = v.step_dates || []
+                                                                                        const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === item.id)
+
+                                                                                        let updated
+                                                                                        if (existingIndex >= 0) {
+                                                                                            updated = [...stepDates]
+                                                                                            updated[existingIndex] = { ...updated[existingIndex], remarks: val }
+                                                                                        } else {
+                                                                                            updated = [...stepDates, {
+                                                                                                id: `temp-${Date.now()}`,
+                                                                                                vendor_id: v.id,
+                                                                                                agenda_step_id: item.id,
+                                                                                                start_date: null,
+                                                                                                end_date: null,
+                                                                                                remarks: val
+                                                                                            }]
+                                                                                        }
+                                                                                        onUpdateVendorData(v.id, 'step_dates' as any, updated)
+                                                                                    }}
+                                                                                    className="w-[200px] h-8 text-xs"
+                                                                                    placeholder="Vendor remarks..."
+                                                                                />
+                                                                            </div>
                                                                             <Button
                                                                                 size="icon"
                                                                                 variant="ghost"
@@ -376,6 +435,12 @@ export function BidAgendaSection({
                                                                                     startDate ? `From ${startDate}` :
                                                                                         endDate ? `Until ${endDate}` :
                                                                                             'No dates set'}
+                                                                                {(() => {
+                                                                                    const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
+                                                                                    return stepDate?.remarks ? (
+                                                                                        <div className="mt-1 text-slate-600 italic">"{stepDate.remarks}"</div>
+                                                                                    ) : null
+                                                                                })()}
                                                                             </div>
                                                                         )
                                                                     })()}

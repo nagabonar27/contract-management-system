@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Check, ChevronsUpDown, ChevronLeft, Plus, Loader2 } from "lucide-react"
 
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +36,7 @@ type Option = { id?: number; label: string; value: string }
 
 export default function CreateContractPage() {
     const router = useRouter()
+    const supabase = createClientComponentClient()
     const [isLoading, setIsLoading] = React.useState(false)
 
     // --- FORM STATE ---
@@ -142,7 +143,7 @@ export default function CreateContractPage() {
 
             if (contractError) throw contractError
 
-            router.push('/dashboard/contractmanagement/ongoing')
+            router.push('/contractmanagement/ongoing')
 
         } catch (error: any) {
             console.error("Error creating contract:", error)
@@ -156,7 +157,7 @@ export default function CreateContractPage() {
         <div className="flex-1 space-y-4 p-8 pt-6 max-w-3xl mx-auto w-full">
             <div className="flex items-center gap-4 mb-6">
                 <Button variant="ghost" size="icon" asChild>
-                    <Link href="/dashboard/contractmanagement/ongoing">
+                    <Link href="/contractmanagement/ongoing">
                         <ChevronLeft className="h-4 w-4" />
                     </Link>
                 </Button>

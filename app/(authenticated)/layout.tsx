@@ -10,7 +10,7 @@ import {
     Newspaper,
     Users // New Icon for User Management
 } from "lucide-react"
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { isAdmin } from "@/lib/adminUtils" // Import your utility
 
 // UI Components
@@ -36,6 +36,7 @@ export default function DashboardLayout({
     const router = useRouter()
     const pathname = usePathname()
     const { user, profile } = useAuth()
+    const supabase = createClientComponentClient() // Cookie-aware client
     const userEmail = user?.email || ""
 
     // Check if user is an admin or analyst
@@ -48,6 +49,7 @@ export default function DashboardLayout({
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
+        router.refresh()
         router.push("/login")
     }
 
@@ -72,8 +74,8 @@ export default function DashboardLayout({
                         </Link>
 
                         <Link
-                            href="/dashboard/contractmanagement/ongoing"
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/dashboard/contractmanagement/ongoing") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
+                            href="/contractmanagement/ongoing"
+                            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/contractmanagement") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
                                 }`}
                         >
                             <Newspaper className="h-4 w-4" />
@@ -85,8 +87,8 @@ export default function DashboardLayout({
                             <>
                                 <div className="mt-4 px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">System</div>
                                 <Link
-                                    href="/dashboard/admin/users"
-                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/dashboard/admin/users") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
+                                    href="/admin/users"
+                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/admin") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
                                         }`}
                                 >
                                     <Users className="h-4 w-4" />
@@ -135,11 +137,12 @@ export default function DashboardLayout({
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
-            </aside>
+            </aside >
 
             <div className="flex flex-col flex-1">
                 {/* Hide header on contract detail page so ContractHeader takes over */}
-                {(!pathname.includes('/ongoing/') || pathname.endsWith('/create') || pathname.endsWith('/ongoing')) && (
+                {/* Logic: Hide if it's a bid-agenda detail page (e.g. /bid-agenda/123) */}
+                {(!pathname.includes('/bid-agenda/') || pathname.endsWith('/create')) && (
                     <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6 lg:h-[60px]">
                         <h1 className="text-lg font-semibold capitalize">
                             {pathname.split('/').pop()?.replace(/-/g, ' ')}
@@ -150,6 +153,6 @@ export default function DashboardLayout({
                     {children}
                 </main>
             </div>
-        </div>
+        </div >
     )
 }

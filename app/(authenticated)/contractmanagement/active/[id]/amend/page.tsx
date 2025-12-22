@@ -17,10 +17,8 @@ interface OriginalContract {
     category: string | null
     pt_id: number | null
     contract_type_id: number | null
-    user_department: string | null
-    user_detail: string | null
+    department: string | null
     appointed_vendor: string | null
-    appointed_vendor_2: string | null
     is_cr: boolean
     is_on_hold: boolean
     is_anticipated: boolean
@@ -94,8 +92,7 @@ export default function AmendContractPage() {
                     category: originalContract.category,
                     pt_id: originalContract.pt_id,
                     contract_type_id: originalContract.contract_type_id,
-                    user_department: originalContract.user_department,
-                    user_detail: originalContract.user_detail,
+                    department: originalContract.department,
                     is_cr: originalContract.is_cr,
                     is_on_hold: originalContract.is_on_hold,
                     is_anticipated: originalContract.is_anticipated,
@@ -161,7 +158,7 @@ export default function AmendContractPage() {
             }
 
             alert(`Amendment created successfully! Version ${newVersion}`)
-            router.push(`/dashboard/contractmanagement/ongoing/${newContract.id}`)
+            router.push(`/bid-agenda/${newContract.id}`)
         } catch (error: any) {
             console.error('Error creating amendment:', error)
             alert('Failed to create amendment: ' + error.message)

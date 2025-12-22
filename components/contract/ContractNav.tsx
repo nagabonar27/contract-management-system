@@ -8,12 +8,12 @@ export function ContractNav() {
     const pathname = usePathname()
 
     const links = [
-        { href: "/dashboard/contractmanagement/ongoing", label: "Ongoing Contracts" },
-        { href: "/dashboard/contractmanagement/active", label: "Active Contracts" },
-        { href: "/dashboard/contractmanagement/expiring", label: "Expiring Soon" },
-        { href: "/dashboard/contractmanagement/expired", label: "Expired Contracts" },
-        { href: "/dashboard/contractmanagement/finished", label: "Finished Contracts" },
-        { href: "/dashboard/contractmanagement/performance", label: "Performance" },
+        { href: "/contractmanagement/ongoing", label: "Ongoing Contracts" },
+        { href: "/contractmanagement/active", label: "Active Contracts" },
+        { href: "/contractmanagement/expiring", label: "Expiring Soon" },
+        { href: "/contractmanagement/expired", label: "Expired Contracts" },
+        { href: "/contractmanagement/finished", label: "Finished Contracts" },
+        { href: "/contractmanagement/performance", label: "Performance" },
     ]
 
     return (

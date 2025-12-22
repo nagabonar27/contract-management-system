@@ -3,9 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "flask-dev": "FLASK_DEBUG=1 pip3 install -r requirements.txt && python3 -m flask --app api/index run -p 5328",
+    "flask-dev": "pip3 install -r requirements.txt && python3 -m flask --app api/index run -p 5328 --debug",
     "next-dev": "next dev",
+    "next-dev:host": "next dev -H 0.0.0.0",
     "dev": "concurrently \"pnpm run next-dev\" \"pnpm run flask-dev\"",
+    "dev:host": "concurrently \"pnpm run next-dev:host\" \"pnpm run flask-dev\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -22,6 +24,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "^2.87.1",
     "@types/node": "20.1.4",
     "@types/react": "18.2.6",

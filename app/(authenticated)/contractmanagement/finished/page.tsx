@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +31,7 @@ interface FinishedContract {
 
 export default function FinishedContractsPage() {
     const router = useRouter()
+    const supabase = createClientComponentClient()
     const [contracts, setContracts] = useState<FinishedContract[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -58,7 +59,7 @@ export default function FinishedContractsPage() {
     }
 
     const handleViewContract = (id: string) => {
-        router.push(`/dashboard/contractmanagement/ongoing/${id}`)
+        router.push(`/bid-agenda/${id}`)
     }
 
     return (

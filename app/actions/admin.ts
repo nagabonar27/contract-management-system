@@ -91,6 +91,35 @@ export async function createNewUser(formData: {
         throw new Error(`Profile Error: ${profileError.message}`);
     }
 
+    revalidatePath("/admin/users")
+    return { success: true }
+}
+
+export async function updateUserInfo(userId: string, formData: {
+    full_name: string,
+    position: string
+}) {
+    // 0. Safety Check
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        throw new Error("Server configuration error: Missing Service Role Key");
+    }
+
+    // 1. Update public.profiles table
+    const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+            full_name: formData.full_name,
+            position: formData.position
+        })
+        .eq('id', userId)
+
+    if (profileError) {
+        console.error("[Admin Action] Profile Update Error:", profileError);
+        throw new Error(`Profile Update Error: ${profileError.message}`);
+    }
+
+    // 2. Revalidate paths
+    revalidatePath("/admin/users")
     revalidatePath("/dashboard/admin/users")
     return { success: true }
 }

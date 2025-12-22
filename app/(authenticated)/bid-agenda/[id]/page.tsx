@@ -7,7 +7,8 @@ import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
 import { isAfter, parseISO } from "date-fns"
 
-import { supabase } from "@/lib/supabaseClient"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { isAdmin } from "@/lib/adminUtils"
 import { Button } from "@/components/ui/button"
 import { getContractDisplayStatus } from "@/lib/contractUtils"
 import { ContractHeader } from "@/components/contract/ContractHeader"
@@ -45,9 +46,11 @@ type ContractData = {
 export default function ContractDetailPage() {
     const params = useParams()
     const router = useRouter()
+    const supabase = createClientComponentClient()
     const id = params.id as string
 
     const [loading, setLoading] = useState(true)
+    const [userPosition, setUserPosition] = useState<string | null>(null)
     const [contract, setContract] = useState<ContractData | null>(null)
     const [agendaList, setAgendaList] = useState<AgendaItem[]>([])
     const [vendorList, setVendorList] = useState<ContractVendor[]>([])
@@ -110,6 +113,17 @@ export default function ContractDetailPage() {
     const derivedAppointedVendor = agendaList.find(item => item.step_name === "Appointed Vendor")?.remarks || contract?.appointed_vendor
 
     // --- DATA LOADING ---
+    useEffect(() => {
+        const fetchUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                const { data } = await supabase.from('profiles').select('position').eq('id', user.id).single()
+                if (data) setUserPosition(data.position)
+            }
+        }
+        fetchUser()
+    }, [])
+
     const fetchAgenda = async () => {
         const { data } = await supabase.from('contract_bid_agenda').select('*').eq('contract_id', id)
         if (data) {
@@ -232,6 +246,21 @@ export default function ContractDetailPage() {
     }, [id])
 
     // --- HEADER ACTIONS ---
+    const handleRevertContract = async () => {
+        if (!confirm("Are you sure you want to REVERT this contract to 'On Progress'?\n\n- It will be editable again.\n- Status will change from Active/Completed to On Progress.")) return
+
+        const { error } = await supabase.from('contracts').update({
+            status: 'On Progress'
+        }).eq('id', id)
+
+        if (error) {
+            alert("Failed to revert: " + error.message)
+        } else {
+            setContract(prev => prev ? { ...prev, status: 'On Progress' } : null)
+            alert("Contract reverted to 'On Progress'!")
+        }
+    }
+
     const handleSaveHeader = async () => {
         if (!contract) return
 
@@ -340,11 +369,19 @@ export default function ContractDetailPage() {
         const appointedVendorStep = agendaList.find(item => item.step_name === "Appointed Vendor")
         const finalAppointedVendor = appointedVendorStep?.remarks || contract.appointed_vendor
 
+        // Determine status based on current state
+        let targetStatus = 'Active' // Default for Draft completion
+
+        // If already Active (or Expired but being finished), move to Completed
+        if (contract.status === 'Active' || contract.status === 'Expired') {
+            targetStatus = 'Completed'
+        }
+
         const { error } = await supabase.from('contracts').update({
             contract_number: finalizeContractNumber,
             effective_date: finalizeEffectiveDate || null,
             expiry_date: finalizeExpiryDate || null,
-            status: 'Active', // Active means Completed/Finalized
+            status: targetStatus,
             contract_summary: finalizeContractSummary || null,
             reference_contract_number: finalizeReferenceNumber || null,
             appointed_vendor: finalAppointedVendor // Ensure this is saved
@@ -358,7 +395,7 @@ export default function ContractDetailPage() {
                 contract_number: finalizeContractNumber,
                 effective_date: finalizeEffectiveDate || null,
                 expiry_date: finalizeExpiryDate || null,
-                status: 'Active'
+                status: targetStatus
             } : null)
             setEditForm(prev => ({
                 ...prev,
@@ -366,8 +403,8 @@ export default function ContractDetailPage() {
                 expiry_date: finalizeExpiryDate
             }))
             setShowFinalizeModal(false)
-            alert("Contract marked as Completed!")
-            router.push("/dashboard/contractmanagement/active")
+            alert(targetStatus === 'Completed' ? "Contract Archived as Inactive/Completed." : "Contract activated successfully!")
+            router.push(targetStatus === 'Completed' ? "/contractmanagement/finished" : "/contractmanagement/active")
         }
     }
 
@@ -391,6 +428,9 @@ export default function ContractDetailPage() {
     const handleSaveAll = async () => {
         setIsSavingAgenda(true)
         try {
+            // Hoist variable for broader scope
+            const appointedVendorName = contract?.appointed_vendor
+
             // Update contract header if editing
             if (contract && isEditingHeader) {
                 const ptRecord = await supabase.from('pt').select('id').eq('name', editForm.pt_name).single()
@@ -398,10 +438,6 @@ export default function ContractDetailPage() {
 
                 const typeRecord = await supabase.from('contract_types').select('id').eq('name', editForm.contract_type_name).single()
                 const typeId = typeRecord.data?.id || contract.contract_type_id
-
-                // Extract Appointed Vendor from Agenda
-                const appointedVendorStep = agendaList.find(item => item.step_name === "Appointed Vendor")
-                const appointedVendorName = appointedVendorStep?.remarks || contract.appointed_vendor
 
                 const { error: contractError } = await supabase.from('contracts')
                     .update({
@@ -418,6 +454,16 @@ export default function ContractDetailPage() {
                     .eq('id', id)
 
                 if (contractError) throw new Error("Failed to save contract header: " + contractError.message)
+            } else if (contract) {
+                // Even if not editing header, we MUST save the Appointed Vendor if it changed
+                // because that selection happens in the Agenda section
+                const { error: vendorError } = await supabase.from('contracts')
+                    .update({
+                        appointed_vendor: appointedVendorName
+                    })
+                    .eq('id', id)
+
+                if (vendorError) throw new Error("Failed to save appointed vendor: " + vendorError.message)
             }
 
             // Update all agenda items
@@ -444,7 +490,8 @@ export default function ContractDetailPage() {
                         tech_eval_note: vendor.tech_eval_note,
                         tech_eval_remarks: vendor.tech_eval_remarks,
                         price_note: vendor.price_note,
-                        revised_price_note: vendor.revised_price_note
+                        revised_price_note: vendor.revised_price_note,
+                        is_appointed: appointedVendorName === vendor.vendor_name // Save the boolean flag
                     })
                     .eq('id', vendor.id)
                 if (error) throw error
@@ -459,6 +506,7 @@ export default function ContractDetailPage() {
                                 agenda_step_id: stepDate.agenda_step_id,
                                 start_date: stepDate.start_date || null,
                                 end_date: stepDate.end_date || null,
+                                remarks: stepDate.remarks || null,
                                 updated_at: new Date().toISOString()
                             }, {
                                 onConflict: 'vendor_id,agenda_step_id'
@@ -521,9 +569,9 @@ export default function ContractDetailPage() {
             <div className="flex items-center justify-between">
                 <Button variant="ghost" asChild className="pl-0">
                     <Link href={
-                        contract?.status === 'Completed' ? "/dashboard/contractmanagement/finished" :
-                            contract?.status === 'Active' ? "/dashboard/contractmanagement/active" :
-                                "/dashboard/contractmanagement/ongoing"
+                        contract?.status === 'Completed' ? "/contractmanagement/finished" :
+                            contract?.status === 'Active' ? "/contractmanagement/active" :
+                                "/contractmanagement/ongoing"
                     }>
                         <ChevronLeft className="mr-2 h-4 w-4" /> Back
                     </Link>
@@ -532,7 +580,11 @@ export default function ContractDetailPage() {
 
             {/* CONTRACT HEADER */}
             <ContractHeader
-                contract={contract ? { ...contract, appointed_vendor: derivedAppointedVendor } : null}
+                contract={contract ? {
+                    ...contract,
+                    appointed_vendor: derivedAppointedVendor,
+                    createdBy: (contract.profiles as any)?.full_name || "Unknown"
+                } : null}
                 displayStatus={displayStatus}
                 isActive={isActive}
                 isReadyToFinalize={isReadyToFinalize}
@@ -556,6 +608,7 @@ export default function ContractDetailPage() {
                     setShowFinalizeModal(true)
                 }}
                 onExtend={() => setShowExtendModal(true)}
+                onRevert={isAdmin(userPosition) ? handleRevertContract : undefined}
                 isCR={isCR}
                 isOnHold={isOnHold}
                 isAnticipated={isAnticipated}
@@ -589,6 +642,10 @@ export default function ContractDetailPage() {
                 onAddVendor={handleAddVendor}
                 onDeleteVendor={handleDeleteVendor}
                 onNewVendorNameChange={setNewVendorName}
+                appointedVendorName={contract?.appointed_vendor}
+                onAppointedVendorChange={(name) => {
+                    setContract(prev => prev ? { ...prev, appointed_vendor: name } : null)
+                }}
             />
 
             {/* FINALIZE MODAL */}

@@ -1,8 +1,7 @@
-// @/components/login-form.tsx
 "use client"
 
-import { useState } from "react"
-import { supabase } from "@/lib/supabaseClient"
+import { useState, useEffect } from "react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -11,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
+    const supabase = createClientComponentClient()
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
     const [loading, setLoading] = useState(false)
@@ -36,6 +36,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
             setError(error.message)
             setLoading(false)
         } else {
+            router.refresh()
             router.push("/dashboard")
         }
     }

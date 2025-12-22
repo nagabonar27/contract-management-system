@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { User, Session } from '@supabase/supabase-js'
 
 // 1. Define the shape of our context data
@@ -19,6 +19,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [session, setSession] = useState<Session | null>(null)
     const [profile, setProfile] = useState<any | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+
+    // Create the client here, inside the component, to ensure it uses the browser context
+    const supabase = createClientComponentClient()
 
     useEffect(() => {
         // A. Check active session on load
@@ -51,25 +54,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // --- FIXED FUNCTION START ---
     const fetchProfile = async (userId: string) => {
         try {
-
+            console.log("DEBUG: Fetching Profile for ID:", userId) // <--- Check ID matches
 
             const { data, error } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
-                .single()
+                .maybeSingle()
 
             if (error) {
-                // PGRST116 means "No rows found" (user has no profile yet).
-                // We ignore it, but log other actual errors.
-                if (error.code !== 'PGRST116') {
-                    console.error('Supabase Error:', error) // DEBUG 2
-                }
+                console.error('Supabase Error:', error) // DEBUG 2
             }
 
-
             setProfile(data)
-
+            console.log("DEBUG: Fetched Profile:", data) // <--- Added Log
         } catch (err) {
             console.error('Unexpected error fetching profile:', err)
         } finally {
