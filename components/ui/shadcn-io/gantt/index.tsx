@@ -354,81 +354,93 @@ export const GanttContentHeader: FC<GanttContentHeaderProps> = ({
 const DailyHeader: FC = () => {
   const gantt = useContext(GanttContext);
 
-  return gantt.timelineData.map((year) =>
-    year.quarters
-      .flatMap((quarter) => quarter.months)
-      .map((month, index) => (
-        <div className="relative flex flex-col" key={`${year.year}-${index}`}>
-          <GanttContentHeader
-            columns={month.days}
-            renderHeaderItem={(item: number) => (
-              <div className="flex items-center justify-center gap-1">
-                <p>
-                  {format(addDays(new Date(year.year, index, 1), item), 'd')}
-                </p>
-                <p className="text-muted-foreground">
-                  {format(
-                    addDays(new Date(year.year, index, 1), item),
-                    'EEEEE'
-                  )}
-                </p>
-              </div>
-            )}
-            title={format(new Date(year.year, index, 1), 'MMMM yyyy')}
-          />
-          <GanttColumns
-            columns={month.days}
-            isColumnSecondary={(item: number) =>
-              [0, 6].includes(
-                addDays(new Date(year.year, index, 1), item).getDay()
-              )
-            }
-          />
-        </div>
-      ))
+  return (
+    <>
+      {gantt.timelineData.map((year) =>
+        year.quarters
+          .flatMap((quarter) => quarter.months)
+          .map((month, index) => (
+            <div className="relative flex flex-col" key={`${year.year}-${index}`}>
+              <GanttContentHeader
+                columns={month.days}
+                renderHeaderItem={(item: number) => (
+                  <div className="flex items-center justify-center gap-1">
+                    <p>
+                      {format(addDays(new Date(year.year, index, 1), item), 'd')}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {format(
+                        addDays(new Date(year.year, index, 1), item),
+                        'EEEEE'
+                      )}
+                    </p>
+                  </div>
+                )}
+                title={format(new Date(year.year, index, 1), 'MMMM yyyy')}
+              />
+              <GanttColumns
+                columns={month.days}
+                isColumnSecondary={(item: number) =>
+                  [0, 6].includes(
+                    addDays(new Date(year.year, index, 1), item).getDay()
+                  )
+                }
+              />
+            </div>
+          ))
+      )}
+    </>
   );
 };
 
 const MonthlyHeader: FC = () => {
   const gantt = useContext(GanttContext);
 
-  return gantt.timelineData.map((year) => (
-    <div className="relative flex flex-col" key={year.year}>
-      <GanttContentHeader
-        columns={year.quarters.flatMap((quarter) => quarter.months).length}
-        renderHeaderItem={(item: number) => (
-          <p>{format(new Date(year.year, item, 1), 'MMM')}</p>
-        )}
-        title={`${year.year}`}
-      />
-      <GanttColumns
-        columns={year.quarters.flatMap((quarter) => quarter.months).length}
-      />
-    </div>
-  ));
+  return (
+    <>
+      {gantt.timelineData.map((year) => (
+        <div className="relative flex flex-col" key={year.year}>
+          <GanttContentHeader
+            columns={year.quarters.flatMap((quarter) => quarter.months).length}
+            renderHeaderItem={(item: number) => (
+              <p>{format(new Date(year.year, item, 1), 'MMM')}</p>
+            )}
+            title={`${year.year}`}
+          />
+          <GanttColumns
+            columns={year.quarters.flatMap((quarter) => quarter.months).length}
+          />
+        </div>
+      ))}
+    </>
+  );
 };
 
 const QuarterlyHeader: FC = () => {
   const gantt = useContext(GanttContext);
 
-  return gantt.timelineData.map((year) =>
-    year.quarters.map((quarter, quarterIndex) => (
-      <div
-        className="relative flex flex-col"
-        key={`${year.year}-${quarterIndex}`}
-      >
-        <GanttContentHeader
-          columns={quarter.months.length}
-          renderHeaderItem={(item: number) => (
-            <p>
-              {format(new Date(year.year, quarterIndex * 3 + item, 1), 'MMM')}
-            </p>
-          )}
-          title={`Q${quarterIndex + 1} ${year.year}`}
-        />
-        <GanttColumns columns={quarter.months.length} />
-      </div>
-    ))
+  return (
+    <>
+      {gantt.timelineData.map((year) =>
+        year.quarters.map((quarter, quarterIndex) => (
+          <div
+            className="relative flex flex-col"
+            key={`${year.year}-${quarterIndex}`}
+          >
+            <GanttContentHeader
+              columns={quarter.months.length}
+              renderHeaderItem={(item: number) => (
+                <p>
+                  {format(new Date(year.year, quarterIndex * 3 + item, 1), 'MMM')}
+                </p>
+              )}
+              title={`Q${quarterIndex + 1} ${year.year}`}
+            />
+            <GanttColumns columns={quarter.months.length} />
+          </div>
+        ))
+      )}
+    </>
   );
 };
 
@@ -646,8 +658,8 @@ export const GanttColumn: FC<GanttColumnProps> = ({
 
   const top = useThrottle(
     mousePosition.y -
-      (mouseRef.current?.getBoundingClientRect().y ?? 0) -
-      (windowScroll.y ?? 0),
+    (mouseRef.current?.getBoundingClientRect().y ?? 0) -
+    (windowScroll.y ?? 0),
     10
   );
 
@@ -713,8 +725,8 @@ export const GanttCreateMarkerTrigger: FC<GanttCreateMarkerTriggerProps> = ({
   const [windowScroll] = useWindowScroll();
   const x = useThrottle(
     mousePosition.x -
-      (mouseRef.current?.getBoundingClientRect().x ?? 0) -
-      (windowScroll.x ?? 0),
+    (mouseRef.current?.getBoundingClientRect().x ?? 0) -
+    (windowScroll.x ?? 0),
     10
   );
 
@@ -1008,29 +1020,29 @@ export const GanttFeatureRow: FC<GanttFeatureRowProps> = ({
   className,
 }) => {
   // Sort features by start date to handle potential overlaps
-  const sortedFeatures = [...features].sort((a, b) => 
+  const sortedFeatures = [...features].sort((a, b) =>
     a.startAt.getTime() - b.startAt.getTime()
   );
 
   // Calculate sub-row positions for overlapping features using a proper algorithm
   const featureWithPositions = [];
   const subRowEndTimes: Date[] = []; // Track when each sub-row becomes free
-  
+
   for (const feature of sortedFeatures) {
     let subRow = 0;
-    
+
     // Find the first sub-row that's free (doesn't overlap)
     while (subRow < subRowEndTimes.length && subRowEndTimes[subRow] > feature.startAt) {
       subRow++;
     }
-    
+
     // Update the end time for this sub-row
     if (subRow === subRowEndTimes.length) {
       subRowEndTimes.push(feature.endAt);
     } else {
       subRowEndTimes[subRow] = feature.endAt;
     }
-    
+
     featureWithPositions.push({ ...feature, subRow });
   }
 
@@ -1038,9 +1050,9 @@ export const GanttFeatureRow: FC<GanttFeatureRowProps> = ({
   const subRowHeight = 36; // Base row height
 
   return (
-    <div 
-      className={cn('relative', className)} 
-      style={{ 
+    <div
+      className={cn('relative', className)}
+      style={{
         height: `${maxSubRows * subRowHeight}px`,
         minHeight: 'var(--gantt-row-height)'
       }}
@@ -1330,7 +1342,7 @@ export const GanttProvider: FC<GanttProviderProps> = ({
 
     // Calculate timeline start date from timelineData
     const timelineStartDate = new Date(timelineData[0].year, 0, 1);
-    
+
     // Calculate the horizontal offset for the feature's start date
     const offset = getOffset(feature.startAt, timelineStartDate, {
       zoom,
@@ -1347,7 +1359,7 @@ export const GanttProvider: FC<GanttProviderProps> = ({
 
     // Scroll to align the feature's start with the right side of the sidebar
     const targetScrollLeft = Math.max(0, offset);
-    
+
     scrollElement.scrollTo({
       left: targetScrollLeft,
       behavior: 'smooth',

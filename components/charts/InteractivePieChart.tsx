@@ -119,6 +119,7 @@ export function InteractivePieChart({ title, description, data, label }: Interac
                                 innerRadius={60}
                                 outerRadius={80}
                                 strokeWidth={5}
+                                // @ts-ignore
                                 activeIndex={activeIndex}
                                 activeShape={({
                                     cx,
