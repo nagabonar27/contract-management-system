@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverActions: true,
+    serverActions: true, // This might be default strictly in 14, but okay to keep if 13.
   },
+  output: 'standalone',
   rewrites: async () => {
     return [
       {
