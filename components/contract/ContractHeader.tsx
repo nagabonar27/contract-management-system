@@ -45,8 +45,8 @@ interface ContractHeaderProps {
     categoryOptions: Option[]
     ptOptions: Option[]
     typeOptions: Option[]
-    userOptions: Option[]
-    userPosition: string | null
+    userOptions?: Option[]
+    userPosition?: string | null
     onEditToggle: () => void
     onFormChange: (updates: Partial<ContractHeaderProps['editForm']>) => void
     onSave: () => void
