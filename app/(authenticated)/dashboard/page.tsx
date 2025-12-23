@@ -1,5 +1,6 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { WeeklyLoadChart } from "@/components/charts/WeeklyLoadChart"
@@ -64,7 +65,8 @@ export default async function DashboardPage() {
             return acc + (now.getTime() - createdDate.getTime())
         }, 0)
         const avgDurationMs = totalDurationMs / ongoingContracts.length
-        avgLeadTime = Math.round(avgDurationMs / (1000 * 60 * 60 * 24)) // Convert to days
+        const days = avgDurationMs / (1000 * 60 * 60 * 24)
+        avgLeadTime = Number(days.toFixed(1)) // 1 decimal place
     }
 
     // 3. Prepare Chart Data (Weekly Load - Active Contracts per week for last 8 weeks)
@@ -141,7 +143,9 @@ export default async function DashboardPage() {
             step_name, 
             status, 
             updated_at,
-            contracts (title)
+            created_by,
+            contracts (id, title),
+            profiles:created_by (full_name)
         `)
         .order('updated_at', { ascending: false })
         .limit(5)
@@ -154,7 +158,14 @@ export default async function DashboardPage() {
             title,
             status,
             created_at,
-            updated_at
+            updated_at,
+            created_by,
+            current_step,
+            profiles:created_by (full_name),
+            contract_bid_agenda (
+                step_name,
+                updated_at
+            )
         `)
         .order('updated_at', { ascending: false }) // Assuming updated_at covers creation too (usually same at start)
         .limit(5)
@@ -164,21 +175,34 @@ export default async function DashboardPage() {
     const combinedActivity = [
         ...(agendaItems || []).map((item: any) => ({
             id: `agenda-${item.id}`,
-            // Title = Username (Using current user for now as we don't have author data)
-            title: userName,
+            // Title = Profile Name OR Default "System"
+            title: item.profiles?.full_name || "System",
             // Description = Bid Agenda - Contract Name
             contractTitle: item.contracts?.title || "Unknown Contract",
+            contractId: item.contracts?.id,
             stepName: item.step_name,
             timestamp: item.updated_at,
             type: 'agenda'
         })),
-        ...(recentContracts || []).map((item: any) => ({
-            id: `contract-${item.id}`,
-            title: userName,
-            description: `${item.status} - ${item.title}`, // Contract Status - Contract Name
-            timestamp: item.updated_at || item.created_at,
-            type: 'contract'
-        }))
+        ...(recentContracts || []).map((item: any) => {
+            // Find latest agenda step from the nested data
+            // We need to sort because the nested array might not be guaranteed order without explicit modifier
+            const latestAgenda = item.contract_bid_agenda?.sort((a: any, b: any) =>
+                new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+            )[0];
+            const agendaStepName = latestAgenda?.step_name;
+
+            return {
+                id: `contract-${item.id}`,
+                title: item.profiles?.full_name || "System",
+                contractTitle: item.title,
+                contractId: item.id,
+                stepName: agendaStepName || item.current_step || item.status, // Priority: Agenda > Current Step (DB) > Status
+                description: `${agendaStepName || item.current_step || item.status} - ${item.title}`,
+                timestamp: item.updated_at || item.created_at,
+                type: 'contract'
+            }
+        })
     ].sort((a, b) => {
         const tA = new Date(a.timestamp).getTime()
         const tB = new Date(b.timestamp).getTime()
@@ -243,7 +267,7 @@ export default async function DashboardPage() {
                                     <div key={activity.id} className="flex items-center gap-4">
                                         <Avatar className="h-9 w-9">
                                             <AvatarFallback>
-                                                {/* Use first letter of title or '?' */}
+                                                {/* Use first letter of User Name or '?' */}
                                                 {activity.title ? activity.title.charAt(0).toUpperCase() : '?'}
                                             </AvatarFallback>
                                         </Avatar>
@@ -252,14 +276,20 @@ export default async function DashboardPage() {
                                                 {activity.title}
                                             </p>
                                             <p className="text-xs text-muted-foreground truncate w-[200px] sm:w-[300px]">
-                                                {/* Bold the title */}
-                                                <span className="font-bold">{activity.contractTitle}</span>
+                                                {/* Bold and Link the title */}
+                                                {activity.contractId ? (
+                                                    <Link href={`/bid-agenda/${activity.contractId}`} className="font-bold hover:underline">
+                                                        {activity.contractTitle}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="font-bold">{activity.contractTitle}</span>
+                                                )}
                                                 {/* Normal weight for the rest */}
                                                 <span> - {activity.stepName}</span>
                                             </p>
                                         </div>
                                         <div className="ml-auto font-medium text-xs text-muted-foreground">
-                                            {activity.timestamp ? formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true }) : '-'}
+                                            {activity.timestamp ? formatDistanceToNow(new Date(activity.timestamp + (activity.timestamp.endsWith('Z') ? '' : 'Z')), { addSuffix: true }) : '-'}
                                         </div>
                                     </div>
                                 ))}

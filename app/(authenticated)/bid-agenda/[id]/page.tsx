@@ -419,7 +419,7 @@ export default function ContractDetailPage() {
             }))
             setShowFinalizeModal(false)
             toast.success(targetStatus === 'Completed' ? "Contract Archived as Inactive/Completed." : "Contract activated successfully!")
-            router.push(targetStatus === 'Completed' ? "/contractmanagement/finished" : "/contractmanagement/active")
+            router.push(targetStatus === 'Completed' ? "/contractmanagement/finished" : "/contractmanagement?tab=active")
         }
     }
 
@@ -586,7 +586,7 @@ export default function ContractDetailPage() {
                 <Button variant="ghost" asChild className="pl-0">
                     <Link href={
                         contract?.status === 'Completed' ? "/contractmanagement/finished" :
-                            contract?.status === 'Active' ? "/contractmanagement/active" :
+                            contract?.status === 'Active' ? "/contractmanagement?tab=active" :
                                 "/contractmanagement?tab=ongoing"
                     }>
                         <ChevronLeft className="mr-2 h-4 w-4" /> Back

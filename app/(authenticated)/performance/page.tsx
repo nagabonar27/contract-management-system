@@ -592,10 +592,20 @@ function ExpandablePICTable({ picList, contracts }: { picList: PicPerformance[],
 }
 
 function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
-    // Grouping Logic
+    // Helper to find root contract
+    const contractMap = new Map(contracts.map(c => [c.id, c]))
+
+    const getRootContract = (c: ContractData): ContractData => {
+        if (!c.parent_contract_id) return c
+        const parent = contractMap.get(c.parent_contract_id)
+        return parent ? getRootContract(parent) : c
+    }
+
+    // Grouping Logic by Root Contract Number
     const grouped: Record<string, ContractData[]> = {}
     contracts.forEach(c => {
-        const key = c.contract_number || 'Unknown'
+        const root = getRootContract(c)
+        const key = root.contract_number || 'Unknown' // Group by Root's number
         if (!grouped[key]) grouped[key] = []
         grouped[key].push(c)
     })
@@ -604,11 +614,16 @@ function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
         <div className="space-y-4">
             {Object.entries(grouped).map(([contractNumber, groupContracts]) => {
                 const sortedGroup = groupContracts.sort((a, b) => a.version - b.version)
+                // Use the root contract's title for the header if possible, or the first one
+                const rootContract = sortedGroup.find(c => !c.parent_contract_id) || sortedGroup[0]
 
                 return (
                     <div key={contractNumber} className="border rounded-md bg-background overflow-hidden">
                         <div className="bg-muted/50 px-4 py-2 border-b font-medium text-sm flex justify-between items-center">
-                            <span>Contract #{contractNumber}</span>
+                            <div className="flex flex-col">
+                                <span className="font-bold">Contract #{contractNumber}</span>
+                                <span className="text-xs text-muted-foreground font-normal">{rootContract.title}</span>
+                            </div>
                             <Badge variant="outline" className="text-xs bg-background">
                                 {sortedGroup.length} Version{sortedGroup.length !== 1 ? 's' : ''}
                             </Badge>
@@ -648,14 +663,18 @@ function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
                                     const appointed = c.contract_vendors?.find(v => v.is_appointed)
                                     if (appointed) {
                                         const finalPrice = appointed.revised_price_note || appointed.price_note
-                                        if (finalPrice) displayValue = `Rp ${finalPrice}`
+                                        if (finalPrice) {
+                                            // Clean string first then format
+                                            const clean = finalPrice.replace(/[^0-9.-]+/g, "")
+                                            displayValue = formatCurrency(parseFloat(clean))
+                                        }
 
                                         if (appointed.price_note && appointed.revised_price_note) {
                                             const { difference, isSaving } = calculatePriceDifference(appointed.price_note, appointed.revised_price_note)
                                             if (isSaving && difference > 0) displaySaving = formatCurrency(difference)
                                         }
                                     } else if (c.final_contract_amount) {
-                                        displayValue = `Rp ${c.final_contract_amount.toLocaleString()}`
+                                        displayValue = formatCurrency(c.final_contract_amount)
                                     }
 
                                     return (

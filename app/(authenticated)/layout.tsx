@@ -90,7 +90,7 @@ export default function DashboardLayout({
 
                 <nav className="flex-1 overflow-auto py-4">
                     <div className="px-2 grid gap-1">
-                        <p className="px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">Main Menu</p>
+                        {!isCollapsed && <p className="px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">Main Menu</p>}
 
                         <Link
                             href="/dashboard"

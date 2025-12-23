@@ -7,18 +7,24 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function checkActivity() {
-    console.log("Checking columns for user_id...");
+    console.log("Checking for any user tracking tables...");
 
-    // Check contracts columns by failing a select to get error or by trying common names
-    const { data, error } = await supabase
-        .from('contracts')
-        .select('user_id, created_by, owner_id, profile_id')
-        .limit(1);
+    // 1. List all tables (indirectly via a known table if possible, or just checking specific common names)
+    // Since we can't query information_schema easily with js client, we'll probe common names.
+    const tablesToCheck = ['audit_logs', 'activity_logs', 'user_actions', 'logs'];
+    for (const table of tablesToCheck) {
+        const { error } = await supabase.from(table).select('*').limit(1);
+        if (!error) console.log(`Found table: ${table}`);
+        else console.log(`Table not accessible/found: ${table}`);
+    }
 
-    if (error) {
-        console.log("Error selecting user columns (expected if they don't exist):", error.message);
+    // 2. Deep check of contracts columns
+    console.log("Deep check of contracts columns...");
+    const { data, error } = await supabase.from('contracts').select('*').limit(1);
+    if (data && data.length > 0) {
+        console.log("Contracts Keys:", Object.keys(data[0]));
     } else {
-        console.log("Found columns:", data);
+        console.log("No contract data or error:", error?.message);
     }
 }
 
