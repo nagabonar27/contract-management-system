@@ -98,6 +98,7 @@ interface ContractTable {
         status: string
         updated_at: string
     }[]
+    version: number
 }
 
 // Helper for color coding (same as PerformancePage)
@@ -179,14 +180,15 @@ export function OngoingContractsTable() {
     const fetchTasks = async () => {
         setLoading(true)
         try {
-            // Added 'category'
+            // UPDATED: Query 'contract_versions' + join 'contract_parents'
             const { data, error } = await supabase
-                .from('contracts')
+                .from('contract_versions')
                 .select(`
                     id, 
                     title, 
+                    version,
                     created_at, 
-                    contract_number, 
+                    updated_at,
                     status,
                     final_contract_amount,
                     cost_saving,
@@ -198,37 +200,48 @@ export function OngoingContractsTable() {
                     is_cr,
                     is_on_hold,
                     is_anticipated,
-                    parent_contract_id,
+                    parent_id,
+                    parent:parent_id (
+                        contract_number,
+                        created_at,
+                        profiles:created_by (full_name)
+                    ),
                     contract_types (name),
-                    profiles:created_by (full_name)
+                    contract_bid_agenda:contract_bid_agenda(step_name, status, updated_at)
                 `)
                 .neq('status', 'Completed')
                 .neq('status', 'Finished')
                 .neq('status', 'Active')
-                .order('created_at', { ascending: false })
+                .eq('is_current', true)
+                .order('updated_at', { ascending: false })
 
             if (error) throw error
 
-            const formatted = (data || []).map((item: any) => ({
-                id: item.id,
-                title: item.title,
-                contract_number: item.contract_number,
-                start_date: item.created_at,
-                status: item.status,
-                contract_value: item.final_contract_amount || 0,
-                cost_savings: item.cost_saving || 0,
-                division: item.division,
-                department: item.department,
-                contract_type_name: item.contract_types?.name,
-                category: item.category,
-                appointed_vendor: item.appointed_vendor,
-                current_step: item.current_step || "Initiated",
-                is_cr: item.is_cr || false,
-                is_on_hold: item.is_on_hold || false,
-                is_anticipated: item.is_anticipated || false,
-                parent_contract_id: item.parent_contract_id,
-                user_name: item.profiles?.full_name
-            }))
+            const formatted = (data || []).map((item: any) => {
+                const parent = item.parent || {}
+                return {
+                    id: item.id, // Version ID
+                    title: item.title,
+                    version: item.version,
+                    contract_number: parent.contract_number,
+                    start_date: parent.created_at || item.created_at,
+                    status: item.status,
+                    contract_value: item.final_contract_amount || 0,
+                    cost_savings: item.cost_saving || 0,
+                    division: item.division,
+                    department: item.department,
+                    contract_type_name: item.contract_types?.name,
+                    category: item.category,
+                    appointed_vendor: item.appointed_vendor,
+                    current_step: item.current_step || "Initiated",
+                    is_cr: item.is_cr || false,
+                    is_on_hold: item.is_on_hold || false,
+                    is_anticipated: item.is_anticipated || false,
+                    parent_contract_id: item.parent_id,
+                    user_name: parent.profiles?.full_name,
+                    contract_bid_agenda: item.contract_bid_agenda
+                }
+            })
 
             setTasks(formatted)
             setFilteredTasks(formatted)
@@ -250,8 +263,11 @@ export function OngoingContractsTable() {
         if (!deleteId) return
 
         try {
+            // UPDATE: Delete from version
+            // Ideally we should soft delete or delete parent if it's the only version.
+            // For now, strict delete from version is what we changed to.
             const { error } = await supabase
-                .from('contracts')
+                .from('contract_versions')
                 .delete()
                 .eq('id', deleteId)
 
@@ -371,7 +387,7 @@ export function OngoingContractsTable() {
                                             <div className="flex items-center gap-2">
                                                 <span>{task.title}</span>
                                                 <ContractBadges
-                                                    isAmendment={task.title?.toLowerCase().includes("amendment") || !!task.parent_contract_id || task.contract_type_name?.includes("Amendment")}
+                                                    isAmendment={task.title?.toLowerCase().includes("amendment") || (task.version > 1) || task.contract_type_name?.includes("Amendment")}
                                                     isCR={task.is_cr}
                                                     isOnHold={task.is_on_hold}
                                                     isAnticipated={task.is_anticipated}

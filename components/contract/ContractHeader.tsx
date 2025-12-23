@@ -18,6 +18,7 @@ interface ContractHeaderProps {
         division: string | null
         department: string | null
         expiry_date: string | null
+        version?: number
         status: string
         current_step: string
         pt?: { name: string } | null
@@ -99,8 +100,8 @@ export function ContractHeader({
 
     /* getDivisionColor now imported from @/lib/contractUtils */
 
-    // Logic: It's an amendment if it has a direct parent OR the type name says Amendment OR the title says so (legacy fallback)
-    const isAmendment = !!contract?.parent_contract_id ||
+    // Logic: Amendment if version > 1 OR explicit type/title
+    const isAmendment = (contract?.version || 1) > 1 ||
         contract?.contract_types?.name?.toLowerCase().includes('amendment') ||
         contract?.title?.toLowerCase().includes('amendment') ||
         false

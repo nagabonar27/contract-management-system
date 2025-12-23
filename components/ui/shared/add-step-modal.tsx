@@ -45,21 +45,48 @@ export function AddStepModal({ onSelect }: AddStepModalProps) {
                 <CommandInput placeholder="Search process step..." />
                 <CommandList>
                     <CommandEmpty>No results found.</CommandEmpty>
-                    <CommandGroup heading="Available Steps">
-                        {BID_AGENDA_STEPS.map((step) => (
-                            <CommandItem
-                                key={step}
-                                value={step}
-                                onSelect={() => {
-                                    onSelect(step)
-                                    setOpen(false)
-                                }}
-                            >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                <span>{step}</span>
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
+                    {(() => {
+                        const splitIndex = BID_AGENDA_STEPS.indexOf("Appointed Vendor")
+                        const preAward = splitIndex !== -1 ? BID_AGENDA_STEPS.slice(0, splitIndex + 1) : BID_AGENDA_STEPS
+                        const postAward = splitIndex !== -1 ? BID_AGENDA_STEPS.slice(splitIndex + 1) : []
+
+                        return (
+                            <>
+                                <CommandGroup heading="Pre-Award">
+                                    {preAward.map((step) => (
+                                        <CommandItem
+                                            key={step}
+                                            value={step}
+                                            onSelect={() => {
+                                                onSelect(step)
+                                                setOpen(false)
+                                            }}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            <span>{step}</span>
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                                {postAward.length > 0 && (
+                                    <CommandGroup heading="Post-Award">
+                                        {postAward.map((step) => (
+                                            <CommandItem
+                                                key={step}
+                                                value={step}
+                                                onSelect={() => {
+                                                    onSelect(step)
+                                                    setOpen(false)
+                                                }}
+                                            >
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                <span>{step}</span>
+                                            </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                )}
+                            </>
+                        )
+                    })()}
                 </CommandList>
             </CommandDialog>
         </>

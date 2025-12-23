@@ -13,6 +13,7 @@ import { MoreVertical, Eye, FileEdit } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
+import { ContractService } from "@/services/contractService"
 
 interface ExpiredContract {
     id: string
@@ -22,7 +23,7 @@ interface ExpiredContract {
     effective_date: string | null
     expiry_date: string
     version: number
-    parent_contract_id: string | null
+    parent_id: string
 }
 
 export function ExpiredContractsTable() {
@@ -53,13 +54,13 @@ export function ExpiredContractsTable() {
 
     const checkAmendmentsInProgress = async () => {
         const { data } = await supabase
-            .from('contracts')
-            .select('parent_contract_id')
+            .from('contract_versions')
+            .select('parent_id')
             .eq('status', 'On Progress')
-            .not('parent_contract_id', 'is', null)
+            .not('parent_id', 'is', null)
 
         if (data) {
-            const parentIds = new Set(data.map(d => d.parent_contract_id as string))
+            const parentIds = new Set(data.map(d => d.parent_id as string))
             setContractsWithAmendment(parentIds)
         }
     }
@@ -69,18 +70,41 @@ export function ExpiredContractsTable() {
         try {
             const today = new Date().toISOString().split('T')[0]
 
+            // We want Active contracts that are expired.
+            // Joining with parent to get contract_number.
             const { data, error } = await supabase
-                .from('contracts')
-                .select('id, title, contract_number, appointed_vendor, effective_date, expiry_date, version, parent_contract_id')
-                .eq('status', 'Active') // Expired are still "Active" status wise, but past date
+                .from('contract_versions')
+                .select(`
+                    id, 
+                    title, 
+                    appointed_vendor, 
+                    effective_date, 
+                    expiry_date, 
+                    version, 
+                    parent_id,
+                    parent:contract_parents(contract_number, created_by)
+                `)
+                .eq('status', 'Active')
                 .lt('expiry_date', today)
-                .order('expiry_date', { ascending: false }) // Most recently expired first
+                .order('expiry_date', { ascending: false })
 
             if (error) throw error
-            setContracts(data || [])
+
+            const mapped: ExpiredContract[] = data.map((d: any) => ({
+                id: d.id,
+                title: d.title,
+                contract_number: d.parent?.contract_number || '-',
+                appointed_vendor: d.appointed_vendor,
+                effective_date: d.effective_date,
+                expiry_date: d.expiry_date,
+                version: d.version,
+                parent_id: d.parent_id
+            }))
+
+            setContracts(mapped)
         } catch (error: any) {
             console.error('Error fetching contracts:', error)
-            alert('Failed to load contracts: ' + error.message)
+            toast.error('Failed to load expired contracts: ' + error.message)
         } finally {
             setLoading(false)
         }
@@ -107,59 +131,60 @@ export function ExpiredContractsTable() {
 
         try {
             setIsCreatingAmendment(true)
-            const original = selectedContractForAmend
+            const originalId = selectedContractForAmend.id
+            const userId = (await supabase.auth.getUser()).data.user?.id
+            if (!userId) throw new Error("No authenticated user found")
 
-            const { data: fullOriginal, error: fetchError } = await supabase
-                .from('contracts')
-                .select('*')
-                .eq('id', original.id)
-                .single()
+            // Use ContractService to create amendment
+            // First get full original details
+            const original = await ContractService.getContract(supabase, originalId)
+            if (!original) throw new Error("Original contract not found")
 
-            if (fetchError) throw fetchError
+            const newVersionNum = (original.version || 0) + 1
 
-            const newVersion = (fullOriginal.version || 0) + 1
-            const amendmentData = {
-                title: `${fullOriginal.title} - Amendment ${newVersion}`,
-                contract_number: fullOriginal.contract_number,
+            // Create the new version
+            // See notes below about why manual Insert:
+            const amendmentPayload = {
+                parent_id: original.parent_id,
+                version: newVersionNum,
+                is_current: true, // This will be the new current one
+                title: `${original.title} - Amendment ${newVersionNum}`,
                 status: 'On Progress',
-                parent_contract_id: fullOriginal.id,
-                version: newVersion,
-                category: fullOriginal.category,
-                contract_type_id: fullOriginal.contract_type_id,
-                division: fullOriginal.division,
-                department: fullOriginal.department,
+                current_step: 'Drafting Amendment',
+                category: original.category,
+                division: original.division,
+                department: original.department,
+                pt_id: original.pt_id,
+                contract_type_id: original.contract_type_id,
                 contract_summary: `Amendment Reason (Expired): ${reason}`,
+                is_cr: original.is_cr,
+                is_on_hold: false,
+                is_anticipated: original.is_anticipated,
+                // Inherited fields logic
                 effective_date: null,
-                expiry_date: null,
-                created_by: (await supabase.auth.getUser()).data.user?.id
+                expiry_date: null
             }
 
-            if (!amendmentData.created_by) throw new Error("No authenticated user found")
-
-            // @ts-ignore
-            delete amendmentData.id
-            // @ts-ignore
-            delete amendmentData.created_at
-            // @ts-ignore
-            delete amendmentData.updated_at
-
-            const { data: newContract, error: insertError } = await supabase
-                .from('contracts')
-                .insert(amendmentData)
+            const { data: newVersion, error: insertError } = await supabase
+                .from('contract_versions')
+                .insert(amendmentPayload)
                 .select()
                 .single()
 
             if (insertError) throw insertError
 
-            // Copy Vendors (Simplified for brevity, assuming same logic as others)
+            // Log change
+            await ContractService.logChange(supabase, newVersion.id, userId, 'CREATE', amendmentPayload)
+
+            // Copy Vendors
             const { data: vendors } = await supabase
                 .from('contract_vendors')
                 .select('*')
-                .eq('contract_id', original.id)
+                .eq('contract_id', originalId)
 
             if (vendors && vendors.length > 0) {
                 const vendorsToInsert = vendors.map(v => ({
-                    contract_id: newContract.id,
+                    contract_id: newVersion.id,
                     vendor_name: v.vendor_name,
                     pic_name: v.pic_name,
                     pic_phone: v.pic_phone,
@@ -172,16 +197,21 @@ export function ExpiredContractsTable() {
                 await supabase.from('contract_vendors').insert(vendorsToInsert)
             }
 
+            // Seed Amendment Agenda
             const amendmentSteps = ["Drafting Amendment", "Review Amendment", "Internal Contract Signature Process", "Vendor Contract Signature Process"]
-            const agendaItems = amendmentSteps.map(step => ({
-                contract_id: newContract.id,
+            const agendaItems = amendmentSteps.map((step, index) => ({
+                contract_id: newVersion.id,
                 step_name: step,
-                status: 'Pending'
+                status: index === 0 ? 'On Progress' : 'Pending',
+                start_date: index === 0 ? new Date().toISOString() : null,
+                created_by: userId
             }))
             await supabase.from('contract_bid_agenda').insert(agendaItems)
 
             setIsAmendModalOpen(false)
-            router.push(`/bid-agenda/${newContract.id}`)
+            toast.success("Amendment created successfully")
+            router.push(`/bid-agenda/${newVersion.id}`)
+
         } catch (error: any) {
             console.error("Error creating amendment:", error)
             toast.error("Failed to create amendment", { description: error.message })
@@ -196,7 +226,7 @@ export function ExpiredContractsTable() {
         setFinishEffectiveDate(contract.effective_date || "")
         setFinishExpiryDate(contract.expiry_date || "")
         setFinishRemarks("")
-        setFinishReferenceNumber(contract.parent_contract_id ? contract.contract_number : "")
+        setFinishReferenceNumber(contract.contract_number)
         setIsFinishModalOpen(true)
     }
 
@@ -205,23 +235,19 @@ export function ExpiredContractsTable() {
 
         try {
             const updates = {
-                contract_number: finishContractNumber,
                 effective_date: finishEffectiveDate,
                 expiry_date: finishExpiryDate,
                 contract_summary: finishRemarks,
-                reference_contract_number: finishReferenceNumber,
                 status: 'Completed'
             }
 
-            const { error } = await supabase
-                .from('contracts')
-                .update(updates)
-                .eq('id', selectedContractForFinish.id)
-
-            if (error) throw error
+            await ContractService.updateContract(supabase, selectedContractForFinish.id, {
+                ...updates,
+                contract_number: finishContractNumber
+            } as any)
 
             setIsFinishModalOpen(false)
-            setFinishRemarks("") // Clear remarks after successful finish
+            setFinishRemarks("")
             toast.success("Contract finished successfully!")
             fetchExpiredContracts()
 
@@ -275,7 +301,7 @@ export function ExpiredContractsTable() {
                                             <TableCell>
                                                 <div className="flex items-center gap-2">
                                                     {contract.title}
-                                                    {contractsWithAmendment.has(contract.id) && (
+                                                    {contractsWithAmendment.has(contract.parent_id) && (
                                                         <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
                                                             Amend in Progress
                                                         </Badge>
@@ -306,7 +332,7 @@ export function ExpiredContractsTable() {
                                                             <Eye className="mr-2 h-4 w-4" />
                                                             Open Bid Agenda
                                                         </DropdownMenuItem>
-                                                        {!contractsWithAmendment.has(contract.id) && (
+                                                        {!contractsWithAmendment.has(contract.parent_id) && (
                                                             <>
                                                                 <DropdownMenuItem onClick={() => handleAmendClick(contract)}>
                                                                     <FileEdit className="mr-2 h-4 w-4" />
@@ -350,7 +376,7 @@ export function ExpiredContractsTable() {
                 onExpiryDateChange={setFinishExpiryDate}
                 onContractSummaryChange={setFinishRemarks}
                 onFinalize={handleConfirmFinish}
-                isAmendment={selectedContractForFinish?.parent_contract_id !== null}
+                isAmendment={selectedContractForFinish?.version ? selectedContractForFinish.version > 1 : false}
                 referenceContractNumber={finishReferenceNumber}
                 onReferenceNumberChange={setFinishReferenceNumber}
                 simpleFinish={true}

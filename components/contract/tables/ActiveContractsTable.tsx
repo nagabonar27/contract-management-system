@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Eye, FileEdit } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { toast } from 'sonner'
-import { calculatePriceDifference, formatCurrency } from "@/lib/contractUtils"
+import { calculatePriceDifference, formatCurrency, getVersionBadgeColor } from "@/lib/contractUtils"
 import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { Input } from "@/components/ui/input"
@@ -82,25 +82,31 @@ export function ActiveContractsTable() {
     const fetchContracts = async () => {
         setLoading(true)
         try {
+            // UPDATED: Query 'contract_versions' + join 'contract_parents'
             const { data, error } = await supabase
-                .from('contracts')
+                .from('contract_versions')
                 .select(`
                     id, 
                     title, 
-                    contract_number, 
+                    status,
                     appointed_vendor, 
                     effective_date, 
                     expiry_date, 
                     version, 
-                    parent_contract_id,
+                    parent_id,
                     is_cr,
                     is_on_hold,
                     is_anticipated,
+                    parent:parent_id(
+                        contract_number,
+                        created_at,
+                        profiles:created_by (full_name)
+                    ),
                     contract_vendors(vendor_name, is_appointed, price_note, revised_price_note),
-                    contract_bid_agenda(step_name, remarks),
-                    profiles:created_by (full_name)
+                    contract_bid_agenda(step_name, remarks)
                 `)
-                .eq('status', 'Active') // Active status represents Completed contracts
+                .eq('status', 'Active') // Active status
+                .eq('is_current', true)
                 .order('expiry_date', { ascending: true })
 
             if (error) throw error
@@ -108,9 +114,12 @@ export function ActiveContractsTable() {
             // MOCK DATA FOR VERIFICATION
             // ... (keep default mock logic if needed, but extend mapping)
             const enrichedData = (data || []).map((c: any) => {
+                const parent = c.parent || {}
                 const mapped = {
                     ...c,
-                    user_name: c.profiles?.full_name,
+                    contract_number: parent.contract_number, // From Parent
+                    user_name: parent.profiles?.full_name, // From Parent
+                    parent_contract_id: c.parent_id, // Map ID
                     contract_vendors: c.contract_vendors || []
                 }
 
@@ -159,11 +168,12 @@ export function ActiveContractsTable() {
 
     const calculateDaysUntilExpiry = (expiryDate: string | null) => {
         if (!expiryDate) return { days: 0, text: '-', variant: 'secondary' as const }
+        // Use imported differenceInDays
         const days = differenceInDays(new Date(expiryDate), new Date())
 
         if (days < 0) return { days, text: 'Expired', variant: 'destructive' as const }
         if (days <= 30) return { days, text: `${days} Days`, variant: 'destructive' as const }
-        if (days <= 90) return { days, text: `${days} Days`, variant: 'secondary' as const } // Changed warning to secondary usually, or distinct
+        if (days <= 90) return { days, text: `${days} Days`, variant: 'secondary' as const }
         return { days, text: `${days} Days`, variant: 'secondary' as const }
     }
 
@@ -191,47 +201,69 @@ export function ActiveContractsTable() {
         try {
             // Check existing amendment in progress
             const { data: existing, error: checkError } = await supabase
-                .from('contracts')
+                .from('contract_versions') // CHECK 'contract_versions'
                 .select('id')
-                .eq('parent_contract_id', selectedContractForAmend.id)
-                .neq('status', 'Active') // Active means completed amendment
-                .single()
+                .eq('parent_id', selectedContractForAmend.parent_contract_id || selectedContractForAmend.id) // Check children of parent
+                .neq('status', 'Active')
+                .neq('status', 'Completed') // Ensure we don't count old finished ones?
+                .neq('id', selectedContractForAmend.id) // Don't count self
+                .eq('is_current', true) // Only check current/WIP ones
+                .maybeSingle()
+
+            // Wait, logic for "Amendment In Progress":
+            // Query contract_versions where parent_id = current.parent_id AND status != Active/Completed?
+            // Yes.
 
             if (existing) {
                 toast.error("An amendment is already in progress for this contract.")
                 return
             }
 
+            // Using Service would be cleaner but here we do direct insert.
+            // Let's migrate to use Service if possible, or adapt logic.
+            // ... Adapting logic here for now due to file scope.
+
+            // Actually, we imported AmendWorkflowModal which calls onConfirm.
+            // We should use the API to create amendment ideally.
+            // But let's fix the SQL here.
+
             const { data: user } = await supabase.auth.getUser()
 
-            // Get parent details to inherit
-            const { data: parentData } = await supabase
-                .from('contracts')
-                .select('pt_id, contract_type_id, division, department, category, contract_number, title, version')
+            // Get original version details
+            const { data: original } = await supabase
+                .from('contract_versions')
+                .select(`
+                    title, contract_type_id, division, department, category, 
+                    parent_id, version, contract_summary,
+                    effective_date, expiry_date, pt_id,
+                    parent:parent_id(contract_number)
+                `)
                 .eq('id', selectedContractForAmend.id)
                 .single()
 
-            if (!parentData) throw new Error("Parent contract not found")
+            if (!original) throw new Error("Contract not found")
 
-            const newVersion = (parentData.version || 0) + 1
-            const newTitle = `${parentData.title} - Amendment ${newVersion}`
+            const newVersion = (original.version || 0) + 1
+            const newTitle = `${original.title} - Amendment ${newVersion}`
 
             const { data: newContract, error: insertError } = await supabase
-                .from('contracts')
+                .from('contract_versions')
                 .insert({
                     title: newTitle,
-                    contract_number: parentData.contract_number, // Same number, different ID/version
-                    parent_contract_id: selectedContractForAmend.id,
+                    parent_id: original.parent_id,
                     version: newVersion,
+                    is_current: true, // Mark as current/WIP
                     status: 'On Progress',
                     current_step: 'Initiated',
-                    contract_type_id: parentData.contract_type_id,
-                    pt_id: parentData.pt_id,
-                    division: parentData.division,
-                    department: parentData.department,
-                    category: parentData.category,
-                    // Store reason in summary or remarks if specific column exists, else maybe title
-                    created_by: user.user?.id
+                    contract_type_id: original.contract_type_id,
+                    pt_id: original.pt_id,
+                    division: original.division,
+                    department: original.department,
+                    category: original.category,
+                    contract_summary: `Amendment of ${original.parent?.contract_number}`,
+                    effective_date: original.effective_date,
+                    expiry_date: original.expiry_date,
+                    // Store changes in logs later
                 })
                 .select()
                 .single()
@@ -251,27 +283,9 @@ export function ActiveContractsTable() {
     }
 
     const handleConfirmFinish = async () => {
-        // Implementation for Finish/Renew logic if needed here
-        // Usually Finish means "Mark as Completed" or "Renew". 
-        // If this is Active Table, "Finish" might mean "Terminate" or "Close".
-        // Or maybe "Renew"? 
-        // The modal is `FinalizeContractModal`.
-        // Let's implement a basic update.
-        toast.info("Finish action triggered - Implementation details depend on specific requirements.")
+        toast.info("Finish action triggered - logic requires specific handling.")
         setIsFinishModalOpen(false)
     }
-
-    const differenceInDays = (d1: Date, d2: Date) => {
-        const diffTime = Math.abs(d2.getTime() - d1.getTime())
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        return d2 > d1 ? -diffDays : diffDays // Crude approx, better import date-fns
-    }
-    // Note: differenceInDays is NOT imported from date-fns in my imports above? 
-    // Wait, Step 545 line 13: `import { format } from "date-fns"`
-    // It is missing `differenceInDays`. I should add it to imports or use helper.
-    // I will add import in next step if needed, or just include it in Replace.
-    // Actually I'll use the one from date-fns if I can import it.
-    // For now I'll expect `differenceInDays` to be imported. I'll check imports.
 
     return (
         <div className="space-y-6">

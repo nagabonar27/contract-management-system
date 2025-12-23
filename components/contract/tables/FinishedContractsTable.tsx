@@ -26,7 +26,7 @@ interface FinishedContract {
     expiry_date: string | null
     contract_summary: string | null
     version: number
-    parent_contract_id: string | null
+    parent_id: string
 }
 
 export function FinishedContractsTable() {
@@ -43,13 +43,36 @@ export function FinishedContractsTable() {
         setLoading(true)
         try {
             const { data, error } = await supabase
-                .from('contracts')
-                .select('id, title, contract_number, appointed_vendor, effective_date, expiry_date, version, parent_contract_id, contract_summary')
+                .from('contract_versions')
+                .select(`
+                    id, 
+                    title, 
+                    appointed_vendor, 
+                    effective_date, 
+                    expiry_date, 
+                    version, 
+                    parent_id, 
+                    contract_summary,
+                    parent:contract_parents(contract_number)
+                `)
                 .eq('status', 'Completed')
                 .order('updated_at', { ascending: false })
 
             if (error) throw error
-            setContracts(data || [])
+
+            const mapped: FinishedContract[] = data.map((d: any) => ({
+                id: d.id,
+                title: d.title,
+                contract_number: d.parent?.contract_number || '-',
+                appointed_vendor: d.appointed_vendor,
+                effective_date: d.effective_date,
+                expiry_date: d.expiry_date,
+                contract_summary: d.contract_summary,
+                version: d.version,
+                parent_id: d.parent_id
+            }))
+
+            setContracts(mapped)
         } catch (error: any) {
             console.error('Error fetching contracts:', error)
             toast.error('Failed to load contracts', { description: error.message })
@@ -111,7 +134,7 @@ export function FinishedContractsTable() {
                                     {contract.contract_summary || '-'}
                                 </TableCell>
                                 <TableCell>
-                                    {contract.parent_contract_id ? (
+                                    {contract.version > 1 ? (
                                         <Badge variant="outline">v{contract.version}</Badge>
                                     ) : (
                                         <span className="text-muted-foreground">Original</span>

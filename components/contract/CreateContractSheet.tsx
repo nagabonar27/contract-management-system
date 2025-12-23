@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ContractService } from "@/services/contractService"
 import {
     Sheet,
     SheetContent,
@@ -118,7 +119,6 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
 
     const handleCreateCategory = async () => {
         if (!searchCategory) return
-        // Note: Category is just a string in contracts table, but we treat it as an option here
         const newOption = { label: searchCategory, value: searchCategory.toLowerCase().replace(/\s+/g, '_') }
         setCategoryOptions(prev => [...prev, newOption])
         setSelectedCategory(newOption)
@@ -139,31 +139,24 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
 
         try {
             let finalPtId = selectedPT.id
-            // Logic to handle potential ephemeral PT if not created yet (though handleCreatePT should have handled it)
-            // But here selectedPT MUST have an ID if it came from options or handleCreatePT
             if (!finalPtId) {
-                // Fallback if somehow selectedPT doesn't have ID (should rely on handleCreatePT)
-                // For now assumes ID exists
+                // Should not happen ideally
             }
 
             // B. Get User
             const { data: { user } } = await supabase.auth.getUser()
 
-            // C. Insert Contract
-            const { error: contractError } = await supabase
-                .from('contracts')
-                .insert({
-                    title: contractName,
-                    pt_id: finalPtId,
-                    contract_type_id: parseInt(selectedType),
-                    category: selectedCategory?.label || null,
-                    division: selectedDivision,
-                    status: 'On Progress',
-                    current_step: '',
-                    created_by: user?.id
-                })
-
-            if (contractError) throw contractError
+            // C. Insert Contract via Service (Updated for Refactor)
+            await ContractService.createContract(supabase, {
+                title: contractName,
+                pt_id: typeof finalPtId === 'number' ? finalPtId : (finalPtId ? parseInt(finalPtId as any) : undefined),
+                contract_type_id: parseInt(selectedType),
+                category: selectedCategory?.label || null,
+                division: selectedDivision,
+                status: 'On Progress',
+                current_step: 'Drafting',
+                created_by: user?.id
+            })
 
             // SUCCESS
             resetForm()
@@ -186,6 +179,19 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
         setSelectedDivision("")
         setSearchPT("")
         setSearchCategory("")
+    }
+
+    const checkDuplicateContractNumber = async (number: string) => {
+        const { data, error } = await supabase
+            .from("contract_parents") // Check PARENTS for contract number
+            .select("id")
+            .eq("contract_number", number)
+            .single()
+
+        if (error && error.code !== "PGRST116") {
+            console.error("Error checking duplicate:", error)
+        }
+        return !!data
     }
 
     return (

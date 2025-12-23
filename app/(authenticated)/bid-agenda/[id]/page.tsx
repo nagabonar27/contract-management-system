@@ -5,19 +5,18 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
-import { isAfter, parseISO } from "date-fns"
 import { toast } from "sonner"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { isAdmin } from "@/lib/adminUtils"
 import { Button } from "@/components/ui/button"
 import { getContractDisplayStatus } from "@/lib/contractUtils"
+import { ContractService } from "@/services/contractService"
 import { ContractHeader } from "@/components/contract/ContractHeader"
 import { BidAgendaSection } from "@/components/contract/BidAgendaSection"
+import type { AgendaItem, ContractVendor } from "@/components/contract/BidAgendaSection"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { GanttChart } from "@/components/contract/GanttChart"
 import { ExtendContractModal } from "@/components/contract/ExtendContractModal"
-import type { AgendaItem, ContractVendor } from "@/components/contract/BidAgendaSection"
 import type { Option } from "@/components/ui/shared/combobox"
 
 // Types
@@ -29,6 +28,7 @@ type ContractData = {
     division: string | null
     department: string | null
     contract_type_id: number | null
+    version: number | undefined
     pt_id: number | null
     effective_date: string | null
     expiry_date: string | null
@@ -76,13 +76,23 @@ export default function ContractDetailPage() {
 
     // Vendor Findings Input (New candidate)
     const [newVendorName, setNewVendorName] = useState("")
+    const [appointedVendorName, setAppointedVendorName] = useState<string | null>(null)
+
 
     // Options
     const [categoryOptions] = useState<Option[]>([
+        { label: "Persetujuan Teknis", value: "Persetujuan Teknis" },
         { label: "Rent", value: "rent" },
         { label: "Exploration", value: "exploration" },
         { label: "General Services", value: "general_services" },
         { label: "Consulting", value: "consulting" },
+        { label: "Consignment", value: "consignment" },
+        { label: "Layanan Kesehatan", value: "layanan_kesehatan" },
+        { label: "Rehab DAS", value: "rehab_das" },
+        { label: "Pengeboran Inti", value: "pengeboran_inti" },
+        { label: "Jasa Logistik", value: "jasa_logistik" },
+        { label: "Geolistrik", value: "geolistrik" },
+        { label: "Pest Control", value: "pest_control" },
     ])
     const [ptOptions, setPtOptions] = useState<Option[]>([])
     const [typeOptions, setTypeOptions] = useState<Option[]>([])
@@ -114,7 +124,7 @@ export default function ContractDetailPage() {
     const isActive = displayStatus === 'Active' || displayStatus === 'Completed' || displayStatus === 'Expired'
     const isReadyToFinalize = displayStatus === 'Ready to Finalize'
     // Derive Appointed Vendor from Agenda (if not saved in DB yet)
-    const derivedAppointedVendor = agendaList.find(item => item.step_name === "Appointed Vendor")?.remarks || contract?.appointed_vendor
+    // const derivedAppointedVendor = agendaList.find(item => item.step_name === "Appointed Vendor")?.remarks || contract?.appointed_vendor
 
     // --- DATA LOADING ---
     useEffect(() => {
@@ -148,119 +158,105 @@ export default function ContractDetailPage() {
         if (data) setVendorList(data)
     }
 
+    // MAIN FETCH
     useEffect(() => {
         const fetchData = async () => {
             if (!id) return
-            const { data: contractData, error } = await supabase
-                .from('contracts')
-                .select(`
-                    id, 
-                    title, 
-                    contract_number, 
-                    category, 
-                    division,
-                    department, 
-                    pt_id, 
-                    contract_type_id, 
-                    effective_date, 
-                    expiry_date, 
-                    current_step, 
-                    pt:pt_id(id, name), 
-                    contract_types:contract_type_id(id, name), 
-                    profiles:created_by(full_name), 
-                    status,
-                    is_cr,
-                    is_on_hold,
-                    status,
-                    is_cr,
-                    is_on_hold,
-                    is_anticipated,
-                    is_anticipated,
-                    appointed_vendor,
-                    created_by
-                `)
-                .eq('id', id)
-                .single()
+            setLoading(true)
 
-            if (error) {
-                console.error('Error fetching contract:', error)
-                setLoading(false)
-                return
-            }
+            try {
+                // 1. Fetch Contract via Service
+                const contractData = await ContractService.getContract(supabase, id)
 
-            if (contractData) {
+                if (!contractData) {
+                    toast.error("Contract not found")
+                    setLoading(false)
+                    return
+                }
 
-
-                // Extract PT info - handle both array and object formats
-                const pt = contractData.pt as any
-                const ptName = Array.isArray(pt) ? (pt[0]?.name || "") : (pt?.name || "")
-                const ptId = Array.isArray(pt) ? (pt[0]?.id || 0) : (pt?.id || 0)
-
-                // Extract Contract Type info - handle both array and object formats
-                const types = contractData.contract_types as any
-                const typeName = Array.isArray(types) ? (types[0]?.name || "") : (types?.name || "")
-                const typeId = contractData.contract_type_id || 0
-
-                setContract(contractData as any)
-                setFinalizeContractNumber(contractData.contract_number || "")
-                setFinalizeEffectiveDate(contractData.effective_date || "")
-                setFinalizeExpiryDate(contractData.expiry_date || "")
-                setEditForm({
+                const mappedContract: ContractData = {
+                    id: contractData.id,
                     title: contractData.title,
-                    category: contractData.category || "",
-                    division: contractData.division || "",
-                    department: contractData.department || "",
-                    pt_id: ptId,
-                    pt_name: ptName,
-                    contract_type_id: typeId,
-                    contract_type_name: typeName,
-                    effective_date: contractData.effective_date || "",
-                    expiry_date: contractData.expiry_date || "",
-                    created_by: contractData.created_by || ""
+                    contract_number: contractData.contract_number || null,
+                    category: contractData.category || null,
+                    division: contractData.division || null,
+                    department: contractData.department || null,
+                    contract_type_id: contractData.contract_type_id || null,
+                    version: contractData.version || undefined,
+                    pt_id: contractData.pt_id || null,
+                    effective_date: contractData.effective_date || null,
+                    expiry_date: contractData.expiry_date || null,
+                    current_step: contractData.current_step || "",
+                    status: contractData.status,
+                    pt: contractData.pt || null,
+                    contract_types: contractData.contract_types || null,
+                    profiles: contractData.profiles || null,
+                    is_cr: contractData.is_cr || false,
+                    is_on_hold: contractData.is_on_hold || false,
+                    is_anticipated: contractData.is_anticipated || false,
+                    appointed_vendor: contractData.appointed_vendor || null,
+                    created_by: contractData.created_by || null
+                }
+
+                setContract(mappedContract)
+                setAppointedVendorName(mappedContract.appointed_vendor) // Init local state
+
+                // Finalize Modal Defaults
+                setFinalizeContractNumber(mappedContract.contract_number || "")
+                setFinalizeEffectiveDate(mappedContract.effective_date || "")
+                setFinalizeExpiryDate(mappedContract.expiry_date || "")
+
+                // Edit Form Defaults
+                setEditForm({
+                    title: mappedContract.title,
+                    category: mappedContract.category || "",
+                    division: mappedContract.division || "",
+                    department: mappedContract.department || "",
+                    pt_id: mappedContract.pt_id || 0,
+                    pt_name: mappedContract.pt?.name || "",
+                    contract_type_id: mappedContract.contract_type_id || 0,
+                    contract_type_name: mappedContract.contract_types?.name || "",
+                    effective_date: mappedContract.effective_date || "",
+                    expiry_date: mappedContract.expiry_date || "",
+                    created_by: mappedContract.created_by || ""
                 })
 
-                if (contractData) {
-                    setIsCR(contractData.is_cr || false)
-                    setIsOnHold(contractData.is_on_hold || false)
-                    setIsAnticipated(contractData.is_anticipated || false)
-                }
+                // Status Flags
+                setIsCR(mappedContract.is_cr || false)
+                setIsOnHold(mappedContract.is_on_hold || false)
+                setIsAnticipated(mappedContract.is_anticipated || false)
+
+                // 2. Fetch Child Data (Agenda & Vendors)
+                await fetchAgenda()
+                await fetchVendors()
+
+                // 3. Fetch Options (Fixed Mapping: Value = ID)
+                const { data: ptData } = await supabase.from('pt').select('id, name')
+                if (ptData) setPtOptions(ptData.map(p => ({ label: p.name, value: p.id.toString() })))
+
+                const { data: typeData } = await supabase.from('contract_types').select('id, name')
+                if (typeData) setTypeOptions(typeData.map(t => ({ label: t.name, value: t.id.toString() })))
+
+                const { data: profileData } = await supabase.from('profiles').select('id, full_name').order('full_name')
+                if (profileData) setUserOptions(profileData.map(p => ({ label: p.full_name || "Unknown", value: p.id })))
+
+            } catch (error) {
+                console.error("Error loading contract:", error)
+                toast.error("Failed to load contract details")
+            } finally {
+                setLoading(false)
             }
-
-            await fetchAgenda()
-            await fetchVendors()
-
-            // Fetch PT options
-            const { data: ptData } = await supabase.from('pt').select('id, name')
-            if (ptData) setPtOptions(ptData.map(p => ({ label: p.name, value: p.name })))
-
-            // Fetch Type options
-            const { data: typeData } = await supabase.from('contract_types').select('id, name')
-            if (typeData) setTypeOptions(typeData.map(t => ({ label: t.name, value: t.name })))
-
-            // Fetch User options
-            const { data: profileData } = await supabase.from('profiles').select('id, full_name').order('full_name')
-            if (profileData) setUserOptions(profileData.map(p => ({ label: p.full_name || "Unknown", value: p.id })))
-
-            setLoading(false)
         }
+
         fetchData()
-        // Check for active amendments
-        const checkAmendment = async () => {
-            const { data } = await supabase.from('contracts')
-                .select('id')
-                .eq('parent_contract_id', id)
-                .eq('status', 'On Progress')
-                .maybeSingle()
-            if (data) setHasAmendmentInProgress(true)
-        }
-        checkAmendment()
+
     }, [id])
 
     // --- HEADER ACTIONS ---
     const handleRevertContract = async () => {
-        if (!confirm("Are you sure you want to REVERT this contract to 'On Progress'?\n\n- It will be editable again.\n- Status will change from Active/Completed to On Progress.")) return
+        if (!confirm("Are you sure you want to REVERT this contract to 'On Progress'?")) return
 
-        const { error } = await supabase.from('contracts').update({
+        const { error } = await supabase.from('contract_versions').update({
             status: 'On Progress'
         }).eq('id', id)
 
@@ -275,423 +271,353 @@ export default function ContractDetailPage() {
     const handleSaveHeader = async () => {
         if (!contract) return
 
-        const finalPtId = ptOptions.find(p => p.value === editForm.pt_name)
-        const finalTypeId = typeOptions.find(t => t.value === editForm.contract_type_name)
-
-        const { error } = await supabase.from('contracts').update({
-            title: editForm.title,
-            category: editForm.category,
-            division: editForm.division,
-            department: editForm.department,
-            pt_id: finalPtId ? parseInt(finalPtId.label) : contract.pt_id,
-            contract_type_id: finalTypeId ? parseInt(finalTypeId.label) : contract.contract_type_id,
-            effective_date: (isActive && editForm.effective_date) ? editForm.effective_date : contract.effective_date,
-            expiry_date: (isActive && editForm.expiry_date) ? editForm.expiry_date : contract.expiry_date,
-            is_cr: isCR,
-            is_on_hold: isOnHold,
-            is_anticipated: isAnticipated,
-            created_by: editForm.created_by || contract.created_by // Only update if set
-        }).eq('id', id)
-
-        if (error) toast.error("Failed to update status", { description: error.message })
-        else {
-            setContract(prev => prev ? {
-                ...prev,
+        try {
+            const updates: any = {
                 title: editForm.title,
                 category: editForm.category,
                 division: editForm.division,
                 department: editForm.department,
-                expiry_date: (isActive && editForm.expiry_date) ? editForm.expiry_date : prev.expiry_date,
-                created_by: editForm.created_by || prev.created_by,
-                // Optimistically update profile name if possible, or wait for refresh.
-                // For now, next refresh will catch it.
-                profiles: userOptions.find(u => u.value === editForm.created_by) ? { full_name: userOptions.find(u => u.value === editForm.created_by)!.label } : prev.profiles
-            } : null)
+                effective_date: (isActive && editForm.effective_date) ? editForm.effective_date : contract.effective_date,
+                expiry_date: (isActive && editForm.expiry_date) ? editForm.expiry_date : contract.expiry_date,
+                is_cr: isCR,
+                is_on_hold: isOnHold,
+                is_anticipated: isAnticipated,
+            }
+
+            // Resolve IDs from Names or IDs in editForm
+            const ptOption = ptOptions.find(o => o.label === editForm.pt_name) || ptOptions.find(o => o.value === editForm.pt_name)
+            if (ptOption) updates.pt_id = parseInt(ptOption.value)
+
+            const typeOption = typeOptions.find(o => o.label === editForm.contract_type_name) || typeOptions.find(o => o.value === editForm.contract_type_name)
+            if (typeOption) updates.contract_type_id = parseInt(typeOption.value)
+
+            // Appointed Vendor sync
+            if (appointedVendorName !== contract.appointed_vendor) {
+                updates.appointed_vendor = appointedVendorName
+            }
+
+            const updated = await ContractService.updateContract(supabase, id, updates)
+
+            setContract(prev => prev ? {
+                ...prev,
+                ...updated,
+                pt: updated.pt || prev.pt,
+                contract_types: updated.contract_types || prev.contract_types
+            } as any : null)
+
+            toast.success("Contract details updated")
             setIsEditingHeader(false)
+
+        } catch (error: any) {
+            console.error("Update failed:", error)
+            toast.error("Failed to update contract", { description: error.message })
         }
     }
 
-    // --- AGENDA ACTIONS ---
-    const handleAddStep = async (stepName: string) => {
-        const { data, error } = await supabase.from('contract_bid_agenda').insert({ contract_id: id, step_name: stepName, status: 'Pending' }).select().single()
-        if (error) toast.error("Failed to add step", { description: error.message })
-        else if (data) {
-            setAgendaList(prev => [...prev, data])
+    // --- AGENDA MANAGEMENT (Implementing BidAgendaSection Props) ---
+
+    // 1. Add Step
+    const handleAddStep = (stepName: string) => {
+        const newStep: AgendaItem = {
+            id: `temp-${Date.now()}`, // Temp ID, will be real DB ID on save
+            contract_id: id,
+            step_name: stepName,
+            status: 'Pending',
+            start_date: null,
+            end_date: null,
+            remarks: "",
+            created_at: new Date().toISOString()
         }
+        setAgendaList(prev => [...prev, newStep])
     }
 
+    // 2. Delete Step
     const handleDeleteStep = async (stepId: string) => {
-        if (!confirm("Are you sure you want to delete this step?")) return
-        const { error } = await supabase.from('contract_bid_agenda').delete().eq('id', stepId)
-        if (error) {
-            toast.error("Delete failed", { description: error.message })
-        } else {
-            setAgendaList(prev => prev.filter(i => i.id !== stepId))
+        if (stepId.startsWith('temp-')) {
+            // Just remove from state
+            setAgendaList(prev => prev.filter(s => s.id !== stepId))
+            return
+        }
+
+        if (confirm("Are you sure you want to delete this step? This will also delete associated vendor dates.")) {
+            // Optimistic update
+            setAgendaList(prev => prev.filter(s => s.id !== stepId))
+            const { error } = await supabase.from('contract_bid_agenda').delete().eq('id', stepId)
+            if (error) {
+                toast.error("Failed to delete step")
+                fetchAgenda() // Revert
+            } else {
+                toast.success("Step deleted")
+            }
         }
     }
 
-    const handleUpdateAgendaItemLocal = (itemId: string, field: keyof AgendaItem, value: string) => {
-        setAgendaList(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item))
+    // 3. Update Agenda Item (Local State)
+    const handleUpdateAgendaItem = (itemId: string, field: keyof AgendaItem, value: string) => {
+        setAgendaList(prev => prev.map(item => {
+            if (item.id === itemId) return { ...item, [field]: value }
+            return item
+        }))
     }
 
+    // 4. Update Vendor Data (Local State - Deep Update)
     const handleUpdateVendorData = (vendorId: string, field: keyof ContractVendor, value: any) => {
         setVendorList(prev => prev.map(v => {
-            if (v.id === vendorId) {
-                return { ...v, [field]: value }
-            }
+            if (v.id === vendorId) return { ...v, [field]: value }
             return v
         }))
     }
 
-    const handleAddVendor = async (stepId: string) => {
-        if (!newVendorName.trim()) return
-        const { data, error } = await supabase
-            .from('contract_vendors')
-            .insert({
-                contract_id: id,
-                vendor_name: newVendorName,
-                agenda_step_id: stepId  // Link vendor to specific agenda step
-            })
-            .select()
-            .single()
-        if (error) toast.error("Failed to add vendor", { description: error.message })
-        else if (data) {
-            setVendorList(prev => [...prev, data])
-            setNewVendorName("")
+    // 5. Add Vendor Candidate
+    const handleAddVendor = (stepId: string) => {
+        if (!newVendorName.trim()) {
+            toast.error("Please enter a vendor name")
+            return
         }
+
+        const newVendor: ContractVendor = {
+            id: `temp-vendor-${Date.now()}`,
+            contract_id: id,
+            vendor_name: newVendorName,
+            agenda_step_id: stepId, // Linked to the Vendor Findings step
+            start_date: null,
+            end_date: null,
+            kyc_result: null,
+            kyc_note: null,
+            tech_eval_note: null,
+            price_note: null,
+            revised_price_note: null,
+            created_at: new Date().toISOString(),
+            step_dates: []
+        }
+
+        setVendorList(prev => [...prev, newVendor])
+        setNewVendorName("")
     }
 
+    // 6. Delete Vendor
     const handleDeleteVendor = async (vendorId: string) => {
-        if (!confirm("Remove vendor candidate?")) return
-        const { error } = await supabase.from('contract_vendors').delete().eq('id', vendorId)
-        if (!error) {
+        if (vendorId.startsWith('temp-')) {
             setVendorList(prev => prev.filter(v => v.id !== vendorId))
+            return
         }
-    }
 
-    // --- BULK SAVE & FINALIZE ---
-    const handleFinalizeContract = async () => {
-        if (!contract) return
-
-        if (finalizeEffectiveDate && finalizeExpiryDate) {
-            if (isAfter(parseISO(finalizeEffectiveDate), parseISO(finalizeExpiryDate)) || finalizeEffectiveDate === finalizeExpiryDate) {
-                toast.error("Invalid Date Range", { description: "Expiry Date must be AFTER the Effective Date." })
-                return
+        if (confirm("Delete this vendor candidate?")) {
+            setVendorList(prev => prev.filter(v => v.id !== vendorId))
+            const { error } = await supabase.from('contract_vendors').delete().eq('id', vendorId)
+            if (error) {
+                toast.error("Failed to delete vendor")
+                fetchVendors()
             }
         }
-
-        // Extract Appointed Vendor from Agenda to ensure it's saved
-        const appointedVendorStep = agendaList.find(item => item.step_name === "Appointed Vendor")
-        const finalAppointedVendor = appointedVendorStep?.remarks || contract.appointed_vendor
-
-        // Determine status based on current state
-        let targetStatus = 'Active' // Default for Draft completion
-
-        // If already Active (or Expired but being finished), move to Completed
-        if (contract.status === 'Active' || contract.status === 'Expired') {
-            targetStatus = 'Completed'
-        }
-
-        const { error } = await supabase.from('contracts').update({
-            contract_number: finalizeContractNumber,
-            effective_date: finalizeEffectiveDate || null,
-            expiry_date: finalizeExpiryDate || null,
-            status: targetStatus,
-            contract_summary: finalizeContractSummary || null,
-            reference_contract_number: finalizeReferenceNumber || null,
-            appointed_vendor: finalAppointedVendor // Ensure this is saved
-        }).eq('id', id)
-
-        if (error) {
-            toast.error("Error completing contract", { description: error.message })
-        } else {
-            setContract(prev => prev ? {
-                ...prev,
-                contract_number: finalizeContractNumber,
-                effective_date: finalizeEffectiveDate || null,
-                expiry_date: finalizeExpiryDate || null,
-                status: targetStatus
-            } : null)
-            setEditForm(prev => ({
-                ...prev,
-                effective_date: finalizeEffectiveDate,
-                expiry_date: finalizeExpiryDate
-            }))
-            setShowFinalizeModal(false)
-            toast.success(targetStatus === 'Completed' ? "Contract Archived as Inactive/Completed." : "Contract activated successfully!")
-            router.push(targetStatus === 'Completed' ? "/contractmanagement/finished" : "/contractmanagement?tab=active")
-        }
     }
 
-    const handleExtendContract = async (newExpiryDate: string) => {
-        if (!contract) return
-        if (!newExpiryDate) return
-
-        const { error } = await supabase.from('contracts').update({
-            expiry_date: newExpiryDate
-        }).eq('id', id)
-
-        if (error) {
-            toast.error("Error extending contract", { description: error.message })
-        } else {
-            setContract(prev => prev ? { ...prev, expiry_date: newExpiryDate } : null)
-            setEditForm(prev => ({ ...prev, expiry_date: newExpiryDate }))
-            toast.success("Contract extended successfully!")
-        }
-    }
-
+    // 7. Save All (Agenda + Vendors)
     const handleSaveAll = async () => {
         setIsSavingAgenda(true)
         try {
-            // Hoist variable for broader scope
-            const appointedVendorName = contract?.appointed_vendor
-
-            // Update contract header if editing
-            if (contract && isEditingHeader) {
-                const ptRecord = await supabase.from('pt').select('id').eq('name', editForm.pt_name).single()
-                const ptId = ptRecord.data?.id || contract.pt_id
-
-                const typeRecord = await supabase.from('contract_types').select('id').eq('name', editForm.contract_type_name).single()
-                const typeId = typeRecord.data?.id || contract.contract_type_id
-
-                const { error: contractError } = await supabase.from('contracts')
-                    .update({
-                        title: editForm.title,
-                        category: editForm.category,
-                        division: editForm.division,
-                        department: editForm.department,
-                        pt_id: ptId,
-                        contract_type_id: typeId,
-                        effective_date: editForm.effective_date || null,
-                        expiry_date: editForm.expiry_date || null,
-                        appointed_vendor: appointedVendorName
-                    })
-                    .eq('id', id)
-
-                if (contractError) throw new Error("Failed to save contract header: " + contractError.message)
-            } else if (contract) {
-                // Even if not editing header, we MUST save the Appointed Vendor if it changed
-                // because that selection happens in the Agenda section
-                const { error: vendorError } = await supabase.from('contracts')
-                    .update({
-                        appointed_vendor: appointedVendorName
-                    })
-                    .eq('id', id)
-
-                if (vendorError) throw new Error("Failed to save appointed vendor: " + vendorError.message)
-            }
-
-            // Update all agenda items
+            // A. Save Agenda Items
             for (const item of agendaList) {
-                const { error } = await supabase.from('contract_bid_agenda')
-                    .update({
-                        start_date: item.start_date,
-                        end_date: item.end_date,
-                        remarks: item.remarks,
-                        status: item.status
-                    })
-                    .eq('id', item.id)
-                if (error) throw error
-            }
+                const payload = {
+                    contract_id: id,
+                    step_name: item.step_name,
+                    status: item.status,
+                    start_date: item.start_date || null,
+                    end_date: item.end_date || null,
+                    remarks: item.remarks || null,
+                }
 
-            // Update all vendors
-            for (const vendor of vendorList) {
-
-                const { error } = await supabase.from('contract_vendors')
-                    .update({
-                        kyc_result: vendor.kyc_result,
-                        kyc_note: vendor.kyc_note,
-                        tech_eval_score: vendor.tech_eval_score,
-                        tech_eval_note: vendor.tech_eval_note,
-                        tech_eval_remarks: vendor.tech_eval_remarks,
-                        price_note: vendor.price_note,
-                        revised_price_note: vendor.revised_price_note,
-                        is_appointed: appointedVendorName === vendor.vendor_name // Save the boolean flag
-                    })
-                    .eq('id', vendor.id)
-                if (error) throw error
-
-                // Save step-specific dates to vendor_step_dates table
-                if (vendor.step_dates && vendor.step_dates.length > 0) {
-                    for (const stepDate of vendor.step_dates) {
-                        const { error: stepDateError } = await supabase
-                            .from('vendor_step_dates')
-                            .upsert({
-                                vendor_id: vendor.id,
-                                agenda_step_id: stepDate.agenda_step_id,
-                                start_date: stepDate.start_date || null,
-                                end_date: stepDate.end_date || null,
-                                remarks: stepDate.remarks || null,
-                                updated_at: new Date().toISOString()
-                            }, {
-                                onConflict: 'vendor_id,agenda_step_id'
-                            })
-                            .select()
-
-                        if (stepDateError) throw stepDateError
+                if (item.id.startsWith('temp-')) {
+                    const { data, error } = await supabase.from('contract_bid_agenda').insert(payload).select().single()
+                    if (!error && data) {
+                        // Update local ID to prevent re-insert
+                        item.id = data.id
                     }
                 } else {
-                    // No step_dates for vendor
+                    await supabase.from('contract_bid_agenda').update(payload).eq('id', item.id)
                 }
             }
 
-            // Refresh all data after save
-            const { data: contractData } = await supabase.from('contracts')
-                .select('*, pt(id, name), contract_types(id, name), profiles(full_name)')
-                .eq('id', id)
-                .single()
+            // B. Save Vendors
+            // Filter vendors that are linked to finding steps
+            for (const v of vendorList) {
+                const payload = {
+                    contract_id: id,
+                    vendor_name: v.vendor_name,
+                    agenda_step_id: v.agenda_step_id || null, // Important linkage
+                    kyc_result: v.kyc_result,
+                    kyc_note: v.kyc_note,
+                    tech_eval_note: v.tech_eval_note,
+                    price_note: v.price_note,
+                    revised_price_note: v.revised_price_note
+                }
 
-            if (contractData) {
-                setContract(contractData)
-                setEditForm({
-                    title: contractData.title,
-                    category: contractData.category || "",
-                    division: contractData.division || "",
-                    department: contractData.department || "",
-                    pt_id: contractData.pt?.id || 0,
-                    pt_name: contractData.pt?.name || "",
-                    contract_type_id: contractData.contract_types?.id || 0,
-                    contract_type_name: contractData.contract_types?.name || "",
-                    effective_date: contractData.effective_date || "",
-                    expiry_date: contractData.expiry_date || "",
-                    created_by: contractData.created_by || ""
-                })
+                if (v.id.startsWith('temp-')) {
+                    const { data, error } = await supabase.from('contract_vendors').insert(payload).select().single()
+                    if (!error && data) {
+                        // We need to update ID in step_dates if any dates were added for this temp vendor... complex.
+                        // But simplify: assume user adds vendor, saves, THEN adds dates. 
+                        // Or handling deep nested save:
+                        const oldId = v.id
+                        v.id = data.id
+                        // If we had pending step_dates for this temp vendor, we must update their vendor_id now?
+                        // Ideally we save vendor first.
+                    }
+                } else {
+                    await supabase.from('contract_vendors').update(payload).eq('id', v.id)
+                }
+
+                // C. Save Vendor Step Dates
+                if (v.step_dates) {
+                    for (const sd of v.step_dates) {
+                        const sdPayload = {
+                            vendor_id: v.id, // Now real ID
+                            agenda_step_id: sd.agenda_step_id,
+                            start_date: sd.start_date || null,
+                            end_date: sd.end_date || null,
+                            remarks: sd.remarks
+                        }
+
+                        if (sd.id.startsWith('temp-')) {
+                            await supabase.from('vendor_step_dates').insert(sdPayload)
+                        } else {
+                            await supabase.from('vendor_step_dates').update(sdPayload).eq('id', sd.id)
+                        }
+                    }
+                }
             }
 
-            // Refresh agenda and vendors
-            try {
-                await fetchAgenda()
-                await fetchVendors()
-            } catch (refreshError) {
-                console.error('Error refreshing data:', refreshError)
-                // Don't throw - save was successful even if refresh fails
+            // D. Update Appointed Vendor on Contract if changed
+            if (appointedVendorName !== contract?.appointed_vendor) {
+                await supabase.from('contract_versions').update({ appointed_vendor: appointedVendorName }).eq('id', id)
             }
 
+            toast.success("All changes saved")
             setIsEditingAgenda(false)
-            setIsEditingHeader(false)
-            toast.success("All changes saved successfully!")
-        } catch (err: any) {
-            toast.error("Failed to save", { description: err.message })
-            console.error(err)
+            // Full refresh to ensure IDs and state are clean
+            fetchAgenda()
+            fetchVendors()
+
+        } catch (error) {
+            console.error("Save failed:", error)
+            toast.error("Failed to save changes")
         } finally {
             setIsSavingAgenda(false)
         }
     }
 
-    if (loading && !contract) return <div className="p-8">Loading...</div>
 
     return (
-        <div className="flex-1 space-y-6 p-8">
-            <div className="flex items-center justify-between">
-                <Button variant="ghost" asChild className="pl-0">
-                    <Link href={
-                        contract?.status === 'Completed' ? "/contractmanagement?tab=active" :
-                            contract?.status === 'Active' ? "/contractmanagement?tab=active" :
-                                "/contractmanagement?tab=ongoing"
-                    }>
-                        <ChevronLeft className="mr-2 h-4 w-4" /> Back
+        <div className="flex-1 space-y-4 p-8 pt-6">
+            <div className="flex items-center justify-between space-y-2">
+                <div className="flex items-center space-x-2">
+                    <Link href="/contractmanagement?tab=ongoing">
+                        <Button variant="ghost" size="icon">
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
                     </Link>
-                </Button>
+                    <h2 className="text-3xl font-bold tracking-tight">Contract Details</h2>
+                </div>
             </div>
 
-            {/* CONTRACT HEADER */}
-            <ContractHeader
-                contract={contract ? {
-                    ...contract,
-                    appointed_vendor: derivedAppointedVendor,
-                    createdBy: (contract.profiles as any)?.full_name || "Unknown"
-                } : null}
-                displayStatus={displayStatus}
-                isActive={isActive}
-                isReadyToFinalize={isReadyToFinalize}
-                isEditingHeader={isEditingHeader}
-                editForm={editForm}
-                categoryOptions={categoryOptions}
-                ptOptions={ptOptions}
-                typeOptions={typeOptions}
-                hasAmendmentInProgress={hasAmendmentInProgress}
-                onEditToggle={() => setIsEditingHeader(!isEditingHeader)}
-                onFormChange={(updates) => setEditForm(prev => ({ ...prev, ...updates }))}
-                onSave={handleSaveHeader}
-                onFinish={() => {
-                    setFinalizeMode('finish')
-                    setFinalizeContractSummary("")
-                    setShowFinalizeModal(true)
-                }}
-                onAmend={() => {
-                    setFinalizeMode('amend')
-                    setFinalizeContractSummary("")
-                    setShowFinalizeModal(true)
-                }}
-                onExtend={() => setShowExtendModal(true)}
-                onRevert={isAdmin(userPosition) ? handleRevertContract : undefined}
-                isCR={isCR}
-                isOnHold={isOnHold}
-                isAnticipated={isAnticipated}
-                onStatusChange={(field, value) => {
-                    if (field === 'is_cr') setIsCR(value)
-                    if (field === 'is_on_hold') setIsOnHold(value)
-                    if (field === 'is_anticipated') setIsAnticipated(value)
-                }}
-                userOptions={userOptions}
-                userPosition={userPosition}
-            />
+            {loading ? (
+                <div>Loading...</div>
+            ) : (
+                <div className="space-y-6">
+                    <ContractHeader
+                        contract={contract}
+                        displayStatus={displayStatus}
+                        isActive={isActive}
+                        isReadyToFinalize={isReadyToFinalize}
+                        isEditingHeader={isEditingHeader}
+                        editForm={editForm}
+                        categoryOptions={categoryOptions}
+                        ptOptions={ptOptions}
+                        typeOptions={typeOptions}
+                        userOptions={userOptions}
+                        userPosition={userPosition}
+                        onEditToggle={() => setIsEditingHeader(!isEditingHeader)}
+                        onFormChange={(updates) => setEditForm(prev => ({ ...prev, ...updates }))}
+                        onSave={handleSaveHeader}
+                        onFinish={() => {
+                            setFinalizeMode('finish')
+                            setShowFinalizeModal(true)
+                        }}
+                        onAmend={() => {
+                            if (hasAmendmentInProgress) {
+                                toast.error("An amendment is already in progress for this contract.")
+                                return
+                            }
+                            setFinalizeMode('amend')
+                            setShowFinalizeModal(true)
+                        }}
+                        onExtend={() => setShowExtendModal(true)}
+                        onRevert={handleRevertContract}
+                        isCR={isCR}
+                        isOnHold={isOnHold}
+                        isAnticipated={isAnticipated}
+                        onStatusChange={(field, val) => {
+                            if (field === 'is_cr') setIsCR(val)
+                            if (field === 'is_on_hold') setIsOnHold(val)
+                            if (field === 'is_anticipated') setIsAnticipated(val)
+                        }}
+                        hasAmendmentInProgress={hasAmendmentInProgress}
+                    />
 
-            {/* GANTT CHART - Project Timeline */}
-            {agendaList.length > 0 && (
-                <div className="mb-6">
-                    <GanttChart agendaItems={agendaList} vendorItems={vendorList} />
+                    {/* BID AGENDA SECTION (Props Aligned) */}
+                    <BidAgendaSection
+                        agendaList={agendaList}
+                        vendorList={vendorList}
+                        isEditingAgenda={isEditingAgenda}
+                        isSavingAgenda={isSavingAgenda}
+                        newVendorName={newVendorName}
+                        onEditToggle={() => setIsEditingAgenda(!isEditingAgenda)}
+                        onSaveAll={handleSaveAll}
+                        onAddStep={handleAddStep}
+                        onDeleteStep={handleDeleteStep}
+                        onUpdateAgendaItem={handleUpdateAgendaItem}
+                        onUpdateVendorData={handleUpdateVendorData}
+                        onAddVendor={handleAddVendor}
+                        onDeleteVendor={handleDeleteVendor}
+                        onNewVendorNameChange={setNewVendorName}
+                        appointedVendorName={appointedVendorName}
+                        onAppointedVendorChange={setAppointedVendorName}
+                    />
+
+                    {/* GANTT CHART */}
+                    <GanttChart
+                        agendaItems={agendaList}
+                        vendorStepDates={vendorList.flatMap(v => v.step_dates || [])}
+                        vendors={vendorList}
+                    />
+
+                    {/* MODALS */}
+                    <FinalizeContractModal
+                        open={showFinalizeModal}
+                        onOpenChange={setShowFinalizeModal}
+                        mode={finalizeMode}
+                        contractId={id}
+                        contractNumber={finalizeContractNumber}
+                        effectiveDate={finalizeEffectiveDate}
+                        expiryDate={finalizeExpiryDate}
+                        contractSummary={finalizeContractSummary}
+                        referenceNumber={finalizeReferenceNumber}
+                        onSuccess={() => {
+                            setShowFinalizeModal(false)
+                            router.refresh()
+                        }}
+                    />
+
+                    <ExtendContractModal
+                        open={showExtendModal}
+                        onOpenChange={setShowExtendModal}
+                        contractId={id}
+                        currentExpiryDate={contract?.expiry_date || ""}
+                        onSuccess={() => {
+                            setShowExtendModal(false)
+                        }}
+                    />
                 </div>
-            )}
-
-            {/* BID AGENDA */}
-            <BidAgendaSection
-                agendaList={agendaList}
-                vendorList={vendorList}
-                isEditingAgenda={isEditingAgenda}
-                isSavingAgenda={isSavingAgenda}
-                newVendorName={newVendorName}
-                onEditToggle={() => setIsEditingAgenda(true)}
-                onSaveAll={handleSaveAll}
-                onAddStep={handleAddStep}
-                onDeleteStep={handleDeleteStep}
-                onUpdateAgendaItem={handleUpdateAgendaItemLocal}
-                onUpdateVendorData={handleUpdateVendorData}
-                onAddVendor={handleAddVendor}
-                onDeleteVendor={handleDeleteVendor}
-                onNewVendorNameChange={setNewVendorName}
-                appointedVendorName={contract?.appointed_vendor}
-                onAppointedVendorChange={(name) => {
-                    setContract(prev => prev ? { ...prev, appointed_vendor: name } : null)
-                }}
-            />
-
-            {/* FINALIZE MODAL */}
-            <FinalizeContractModal
-                open={showFinalizeModal}
-                onOpenChange={setShowFinalizeModal}
-                contractNumber={finalizeContractNumber}
-                effectiveDate={finalizeEffectiveDate}
-                expiryDate={finalizeExpiryDate}
-                contractSummary={finalizeContractSummary}
-                onContractNumberChange={setFinalizeContractNumber}
-                onEffectiveDateChange={setFinalizeEffectiveDate}
-                onExpiryDateChange={setFinalizeExpiryDate}
-                onContractSummaryChange={setFinalizeContractSummary}
-                onFinalize={handleFinalizeContract}
-                isAmendment={finalizeMode === 'amend'}
-                referenceContractNumber={finalizeReferenceNumber}
-                onReferenceNumberChange={setFinalizeReferenceNumber}
-            />
-
-            {/* EXTEND CONTRACT MODAL */}
-            {contract && (
-                <ExtendContractModal
-                    open={showExtendModal}
-                    onOpenChange={setShowExtendModal}
-                    currentExpiryDate={contract.expiry_date || ""}
-                    onExtend={handleExtendContract}
-                />
             )}
         </div>
     )

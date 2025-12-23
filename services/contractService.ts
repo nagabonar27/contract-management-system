@@ -1,47 +1,58 @@
-import { createClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// No internal client creation - Must be injected
 
 // ============================================
-// Contract Service - Core CRUD Operations
+// Contract Service - Refactored for Split Arch
 // ============================================
 
+// The "View Model" that the UI expects (Flattened)
 export interface Contract {
-    id: string;
+    id: string; // This is the VERSION ID
+    parent_id?: string;
+    // Fields from Parent
     contract_number?: string;
-    title: string;
-    vendor_id?: string;
-    contract_type_id?: string;
     created_by?: string;
+    parent_created_at?: string;
+
+    // Fields from Version
+    version?: number;
+    is_current?: boolean;
+    title: string;
     status: string;
     current_step?: string;
-    version?: number;
-    parent_contract_id?: string;
     effective_date?: string;
     expiry_date?: string;
-    category?: string;
-    pt_id?: string;
-    vendor_name?: string;
-    user_department?: string;
-    user_detail?: string;
-    is_cr?: boolean;
-    is_on_hold?: boolean;
-    is_anticipated?: boolean;
-    vendor_2?: string;
-    vendor_3?: string;
-    appointed_vendor?: string;
-    appointed_vendor_2?: string;
     final_contract_amount?: number;
     cost_saving?: number;
     contract_summary?: string;
-    reference_contract_number?: string;
-    contract_batch_id?: string;
-    batch_name?: string;
+
+    // Categorization
+    category?: string;
+    department?: string;
+    division?: string;
+
+    // Relationships
+    contract_type_id?: number;
+    pt_id?: number;
+    appointed_vendor?: string;
+
+    // Joined Data (for UI display)
+    pt?: { id: number, name: string, abbreviation?: string };
+    contract_types?: { id: number, name: string };
+    profiles?: { full_name: string }; // Creator
+
+    // Flags
+    is_cr?: boolean;
+    is_on_hold?: boolean;
+    is_anticipated?: boolean;
+
     created_at?: string;
     updated_at?: string;
+
+    // Legacy mapping helpers
+    vendor_id?: string;
+    parent_contract_id?: string; // Mapped to parent_id
 }
 
 export interface ContractFilters {
@@ -51,61 +62,101 @@ export interface ContractFilters {
     search?: string;
 }
 
+export interface ContractLog {
+    id: string;
+    contract_id: string; // Version ID
+    user_id: string;
+    action: string;
+    changes: any; // JSONB
+    created_at: string;
+}
+
 export class ContractService {
+
+    // --- HELPER: Flatten Query Result ---
+    private static transformToContract(versionRow: any): Contract | null {
+        if (!versionRow) return null;
+
+        const parent = versionRow.parent || {};
+        return {
+            ...versionRow,
+            contract_number: parent.contract_number,
+            parent_created_at: parent.created_at,
+            created_by: parent.created_by,
+            pt: versionRow.pt,
+            contract_types: versionRow.contract_type,
+            profiles: parent.profiles,
+            parent_contract_id: versionRow.parent_id
+        };
+    }
+
     /**
-     * Get a single contract by ID with all related data
+     * Get a single contract by ID (Version ID)
      */
-    static async getContract(id: string): Promise<Contract | null> {
+    static async getContract(client: SupabaseClient, id: string): Promise<Contract | null> {
         try {
-            const { data, error } = await supabase
-                .from('contracts')
+            // Join parent_id to get contract_number and creator
+            // Note: profiles usually linked via Created By. 
+            // In new schema, created_by is on Parent.
+            const { data, error } = await client
+                .from('contract_versions')
                 .select(`
-          *,
-          pt:pt_id(id, name, abbreviation),
-          contract_type:contract_type_id(id, name),
-          creator:created_by(id, email, full_name, position)
-        `)
+                    *,
+                    parent:parent_id (
+                        id, contract_number, created_at, created_by,
+                        profiles:created_by (full_name, email, position)
+                    ),
+                    pt:pt_id (id, name, abbreviation),
+                    contract_type:contract_type_id (id, name)
+                `)
                 .eq('id', id)
                 .single();
 
             if (error) throw error;
-            return data;
+            return this.transformToContract(data);
         } catch (error) {
             console.error('Error fetching contract:', error);
-            throw error;
+            return null; // Don't throw to avoid crashing UI completely
         }
     }
 
     /**
-     * Get all contracts with optional filtering
+     * Get all contracts
      */
-    static async getAllContracts(filters?: ContractFilters): Promise<Contract[]> {
+    static async getAllContracts(client: SupabaseClient, filters?: ContractFilters): Promise<Contract[]> {
         try {
-            let query = supabase
-                .from('contracts')
+            let query = client
+                .from('contract_versions')
                 .select(`
-          *,
-          pt:pt_id(id, name, abbreviation),
-          contract_type:contract_type_id(id, name)
-        `)
-                .order('created_at', { ascending: false });
+                    *,
+                    parent:parent_id (
+                        id, contract_number, created_at, created_by,
+                        profiles:created_by (full_name)
+                    ),
+                    pt:pt_id (id, name, abbreviation),
+                    contract_type:contract_type_id (id, name)
+                `)
+                .eq('is_current', true)
+                .order('updated_at', { ascending: false });
 
-            if (filters?.status) {
-                query = query.eq('status', filters.status);
-            }
-            if (filters?.pt_id) {
-                query = query.eq('pt_id', filters.pt_id);
-            }
-            if (filters?.category) {
-                query = query.eq('category', filters.category);
-            }
-            if (filters?.search) {
-                query = query.or(`title.ilike.%${filters.search}%,contract_number.ilike.%${filters.search}%`);
-            }
+            if (filters?.status) query = query.eq('status', filters.status);
+            if (filters?.pt_id) query = query.eq('pt_id', filters.pt_id);
+            if (filters?.category) query = query.eq('category', filters.category);
 
             const { data, error } = await query;
             if (error) throw error;
-            return data || [];
+
+            let result = (data || []).map(row => this.transformToContract(row)!);
+
+            if (filters?.search) {
+                const search = filters.search.toLowerCase();
+                result = result.filter(c =>
+                    c.title?.toLowerCase().includes(search) ||
+                    c.contract_number?.toLowerCase().includes(search)
+                );
+            }
+
+            return result;
         } catch (error) {
             console.error('Error fetching contracts:', error);
             throw error;
@@ -113,53 +164,79 @@ export class ContractService {
     }
 
     /**
-     * Get active contracts (status = 'Active')
+     * Create a new contract (Parent + Version 1)
      */
-    static async getActiveContracts(): Promise<Contract[]> {
-        return this.getAllContracts({ status: 'Active' });
-    }
-
-    /**
-     * Get contracts expiring within specified days
-     */
-    static async getExpiringContracts(daysUntilExpiry: number = 120): Promise<Contract[]> {
+    static async createContract(client: SupabaseClient, contractData: Partial<Contract>): Promise<Contract> {
         try {
-            const today = new Date();
-            const futureDate = new Date();
-            futureDate.setDate(today.getDate() + daysUntilExpiry);
-
-            const { data, error } = await supabase
-                .from('contracts')
-                .select(`
-          *,
-          pt:pt_id(id, name, abbreviation)
-        `)
-                .eq('status', 'Active')
-                .gte('expiry_date', today.toISOString().split('T')[0])
-                .lte('expiry_date', futureDate.toISOString().split('T')[0])
-                .order('expiry_date', { ascending: true });
-
-            if (error) throw error;
-            return data || [];
-        } catch (error) {
-            console.error('Error fetching expiring contracts:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Create a new contract
-     */
-    static async createContract(contractData: Partial<Contract>): Promise<Contract> {
-        try {
-            const { data, error } = await supabase
-                .from('contracts')
-                .insert([contractData])
+            // 1. Create Parent
+            // Note: client (authenticated) must have Insert permission on contract_parents
+            const { data: parentData, error: parentError } = await client
+                .from('contract_parents')
+                .insert({
+                    contract_number: contractData.contract_number,
+                    created_by: contractData.created_by
+                })
                 .select()
                 .single();
 
-            if (error) throw error;
-            return data;
+            if (parentError) throw parentError;
+
+            // 2. Create Version 1
+            const versionPayload = {
+                parent_id: parentData.id,
+                version: 1,
+                is_current: true,
+                title: contractData.title,
+                status: contractData.status || 'Draft',
+                current_step: contractData.current_step || 'Drafting',
+                category: contractData.category,
+                division: contractData.division,
+                department: contractData.department,
+                pt_id: contractData.pt_id,
+                contract_type_id: contractData.contract_type_id,
+                effective_date: contractData.effective_date,
+                expiry_date: contractData.expiry_date,
+                is_cr: contractData.is_cr,
+                is_on_hold: contractData.is_on_hold,
+                is_anticipated: contractData.is_anticipated
+            };
+
+            const { data: versionData, error: versionError } = await client
+                .from('contract_versions')
+                .insert(versionPayload)
+                .select()
+                .single();
+
+            if (versionError) throw versionError;
+
+            // 3. Seed Default Bid Agenda
+            const defaultSteps = [
+                'Drafting',
+                'Internal Review',
+                'Legal Review',
+                'Vendor Selection',
+                'Appointed Vendor',
+                'Internal Contract Signature Process',
+                'Vendor Contract Signature Process'
+            ];
+
+            const agendaPayload = defaultSteps.map((step, index) => ({
+                contract_id: versionData.id,
+                step_name: step,
+                status: index === 0 ? 'On Progress' : 'Pending', // First step active
+                start_date: index === 0 ? new Date().toISOString() : null,
+                created_by: contractData.created_by
+            }));
+
+            const { error: agendaError } = await client
+                .from('contract_bid_agenda')
+                .insert(agendaPayload);
+
+            if (agendaError) console.error("Error seeding agenda:", agendaError);
+
+            await this.logChange(client, versionData.id, contractData.created_by || 'system', 'CREATE', versionPayload);
+
+            return this.getContract(client, versionData.id) as Promise<Contract>;
         } catch (error) {
             console.error('Error creating contract:', error);
             throw error;
@@ -169,17 +246,39 @@ export class ContractService {
     /**
      * Update an existing contract
      */
-    static async updateContract(id: string, updates: Partial<Contract>): Promise<Contract> {
+    static async updateContract(client: SupabaseClient, id: string, updates: Partial<Contract>): Promise<Contract> {
         try {
-            const { data, error } = await supabase
-                .from('contracts')
-                .update({ ...updates, updated_at: new Date().toISOString() })
+            const { data: current } = await client.from('contract_versions').select('*').eq('id', id).single();
+            if (!current) throw new Error("Contract not found");
+
+            const { contract_number, ...versionUpdates } = updates;
+
+            if (contract_number) {
+                await client.from('contract_parents').update({ contract_number }).eq('id', current.parent_id);
+            }
+
+            const safeUpdates: any = {};
+            const allowedFields = ['title', 'status', 'current_step', 'effective_date', 'expiry_date', 'final_contract_amount', 'cost_saving', 'contract_summary', 'category', 'department', 'division', 'pt_id', 'contract_type_id', 'appointed_vendor', 'is_cr', 'is_on_hold', 'is_anticipated'];
+
+            Object.keys(versionUpdates).forEach(key => {
+                // Allow known fields
+                if (allowedFields.includes(key) && (versionUpdates as any)[key] !== undefined) {
+                    safeUpdates[key] = (versionUpdates as any)[key];
+                }
+            });
+
+            const { data, error } = await client
+                .from('contract_versions')
+                .update({ ...safeUpdates, updated_at: new Date().toISOString() })
                 .eq('id', id)
                 .select()
                 .single();
 
             if (error) throw error;
-            return data;
+
+            await this.logChange(client, id, (updates as any).user_id || 'system', 'UPDATE', safeUpdates, current);
+
+            return this.getContract(client, id) as Promise<Contract>;
         } catch (error) {
             console.error('Error updating contract:', error);
             throw error;
@@ -187,118 +286,113 @@ export class ContractService {
     }
 
     /**
-     * Delete a contract and all related data (cascade)
+     * Log Changes
      */
-    static async deleteContract(id: string): Promise<void> {
+    static async logChange(client: SupabaseClient, contractId: string, userId: string, action: string, newData: any, oldData: any = {}) {
         try {
-            // Delete related records first
-            await supabase.from('contract_bid_agenda').delete().eq('contract_id', id);
-            await supabase.from('contract_vendors').delete().eq('contract_id', id);
-            await supabase.from('contract_logs').delete().eq('contract_id', id);
+            if (!userId || userId.length !== 36) return; // Basic UUID check
 
-            // Delete the contract
-            const { error } = await supabase.from('contracts').delete().eq('id', id);
-            if (error) throw error;
-        } catch (error) {
-            console.error('Error deleting contract:', error);
-            throw error;
+            const changes: any = {};
+
+            if (action === 'CREATE') {
+                changes['initial_state'] = newData;
+            } else {
+                Object.keys(newData).forEach(key => {
+                    if (key === 'updated_at') return;
+                    if (JSON.stringify(newData[key]) !== JSON.stringify(oldData[key])) {
+                        changes[key] = {
+                            old: oldData[key],
+                            new: newData[key]
+                        };
+                    }
+                });
+            }
+
+            if (Object.keys(changes).length === 0 && action !== 'CREATE') return;
+
+            await client.from('contract_logs').insert({
+                contract_id: contractId,
+                user_id: userId,
+                action,
+                changes
+            });
+        } catch (err) {
+            console.error("Audit Log Failed:", err);
         }
     }
 
     /**
-     * Create an amendment (copy of original contract)
+     * createAmendment
      */
-    static async createAmendment(originalContractId: string): Promise<Contract> {
+    static async createAmendment(client: SupabaseClient, originalContractId: string, userId?: string): Promise<Contract> {
         try {
-            // Get original contract
-            const original = await this.getContract(originalContractId);
+            const original = await this.getContract(client, originalContractId);
             if (!original) throw new Error('Original contract not found');
 
-            // Create new contract as amendment
-            const amendmentData: Partial<Contract> = {
-                ...original,
-                id: undefined, // Let DB generate new ID
-                parent_contract_id: original.id,
-                version: (original.version || 0) + 1,
+            const newVersionNum = (original.version || 0) + 1;
+
+            const newVersionData = {
+                parent_id: original.parent_id, // Same parent as original
+                version: newVersionNum,
+                is_current: true,
+
+                title: `${original.title} - Amendment ${newVersionNum}`,
                 status: 'On Progress',
-                contract_number: undefined, // Will be filled at finalization
-                reference_contract_number: undefined, // Will be filled at finalization
-                created_at: undefined,
-                updated_at: undefined,
+                current_step: 'Initiated',
+
+                category: original.category,
+                division: original.division,
+                department: original.department,
+                contract_type_id: original.contract_type_id,
+                pt_id: original.pt_id,
+
+                effective_date: original.effective_date,
+                expiry_date: original.expiry_date,
+                contract_summary: `Amendment of ${original.contract_number}`,
             };
 
-            return await this.createContract(amendmentData);
+            const { data, error } = await client
+                .from('contract_versions')
+                .insert(newVersionData)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            await this.logChange(client, data.id, userId || 'system', 'CREATE_AMENDMENT', newVersionData);
+
+            return this.getContract(client, data.id) as Promise<Contract>;
         } catch (error) {
             console.error('Error creating amendment:', error);
             throw error;
         }
     }
 
-    /**
-     * Get all versions of a contract (by contract_number or parent_contract_id)
-     */
-    static async getContractVersions(contractNumber: string): Promise<Contract[]> {
-        try {
-            const { data, error } = await supabase
-                .from('contracts')
-                .select('*')
-                .or(`contract_number.eq.${contractNumber},reference_contract_number.eq.${contractNumber}`)
-                .order('version', { ascending: true });
-
-            if (error) throw error;
-            return data || [];
-        } catch (error) {
-            console.error('Error fetching contract versions:', error);
-            throw error;
-        }
+    static async deleteContract(client: SupabaseClient, id: string): Promise<void> {
+        const { error } = await client.from('contract_versions').delete().eq('id', id);
+        if (error) throw error;
     }
 
-    /**
-     * Calculate cost saving for a contract
-     */
-    static async calculateCostSaving(contractId: string): Promise<number> {
-        try {
-            // Get appointed vendors
-            const { data: vendors, error } = await supabase
-                .from('contract_vendors')
-                .select('price_note, revised_price_note')
-                .eq('contract_id', contractId)
-                .eq('is_appointed', true);
-
-            if (error) throw error;
-            if (!vendors || vendors.length === 0) return 0;
-
-            // Calculate total savings
-            let totalSaving = 0;
-            for (const vendor of vendors) {
-                const originalPrice = parseFloat(vendor.price_note || '0');
-                const revisedPrice = parseFloat(vendor.revised_price_note || vendor.price_note || '0');
-                totalSaving += (originalPrice - revisedPrice);
-            }
-
-            return totalSaving;
-        } catch (error) {
-            console.error('Error calculating cost saving:', error);
-            return 0;
-        }
+    static async getActiveContracts(client: SupabaseClient): Promise<Contract[]> {
+        return this.getAllContracts(client, { status: 'Active' });
     }
 
-    /**
-     * Get contracts in a batch
-     */
-    static async getContractBatch(batchId: string): Promise<Contract[]> {
-        try {
-            const { data, error } = await supabase
-                .from('contracts')
-                .select('*')
-                .eq('contract_batch_id', batchId)
-                .order('created_at', { ascending: true });
+    static async calculateCostSaving(client: SupabaseClient, contractId: string): Promise<number> {
+        const { data: vendors, error } = await client
+            .from('contract_vendors')
+            .select('price_note, revised_price_note')
+            .eq('contract_id', contractId)
+            .eq('is_appointed', true);
 
-            if (error) throw error;
-            return data || [];
-        } catch (error) {
-            console.error('Error fetching contract batch:', error);
-            throw error;
+        if (error) throw error;
+        if (!vendors || vendors.length === 0) return 0;
+
+        let totalSaving = 0;
+        for (const vendor of vendors) {
+            const originalPrice = parseFloat(vendor.price_note || '0');
+            const revisedPrice = parseFloat(vendor.revised_price_note || vendor.price_note || '0');
+            totalSaving += (originalPrice - revisedPrice);
         }
+        return totalSaving;
     }
 }

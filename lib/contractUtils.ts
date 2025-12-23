@@ -138,19 +138,22 @@ export const getDivisionColor = (div: string | null) => {
         case 'EXT': return 'bg-lime-100 text-lime-800 border-lime-200'
         case 'PLNT': return 'bg-amber-100 text-amber-800 border-amber-200'
         case 'MGMT': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
+        default: return 'bg-slate-100 text-slate-800 border-slate-200'
+    }
+}
 
-            /**
-             * Get color class for version badge
-             * @param version - Version number
-             * @returns Tailwind CSS class string
-             */
-            export const getVersionBadgeColor = (version: number) => {
-                switch (version) {
-                    case 1: return "bg-gray-100 text-gray-800 border-gray-200"
-                    case 2: return "bg-blue-100 text-blue-800 border-blue-200"
-                    case 3: return "bg-green-100 text-green-800 border-green-200"
-                    case 4: return "bg-orange-100 text-orange-800 border-orange-200"
-                    case 5: return "bg-red-100 text-red-800 border-red-200"
-                    default: return "bg-purple-100 text-purple-800 border-purple-200"
-                }
-            }
+/**
+ * Get color class for version badge
+ * @param version - Version number
+ * @returns Tailwind CSS class string
+ */
+export const getVersionBadgeColor = (version: number) => {
+    switch (version) {
+        case 1: return "bg-gray-100 text-gray-800 border-gray-200"
+        case 2: return "bg-blue-100 text-blue-800 border-blue-200"
+        case 3: return "bg-green-100 text-green-800 border-green-200"
+        case 4: return "bg-orange-100 text-orange-800 border-orange-200"
+        case 5: return "bg-red-100 text-red-800 border-red-200"
+        default: return "bg-purple-100 text-purple-800 border-purple-200"
+    }
+}
