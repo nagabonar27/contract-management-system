@@ -14,6 +14,7 @@ import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { toast } from "sonner"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { Input } from "@/components/ui/input"
+import { getVersionBadgeColor } from "@/lib/contractUtils"
 
 interface ExpiringContract {
     id: string
@@ -166,16 +167,6 @@ export function ExpiringContractsTable() {
         }
     }
 
-    const getVersionBadgeColor = (version: number) => {
-        switch (version) {
-            case 1: return "bg-gray-100 text-gray-800 border-gray-200"
-            case 2: return "bg-blue-100 text-blue-800 border-blue-200"
-            case 3: return "bg-green-100 text-green-800 border-green-200"
-            case 4: return "bg-orange-100 text-orange-800 border-orange-200"
-            case 5: return "bg-red-100 text-red-800 border-red-200"
-            default: return "bg-purple-100 text-purple-800 border-purple-200"
-        }
-    }
 
     const handleViewContract = (id: string) => {
         router.push(`/bid-agenda/${id}`)

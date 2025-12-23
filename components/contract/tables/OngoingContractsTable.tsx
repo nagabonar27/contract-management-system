@@ -31,7 +31,7 @@ import {
     Search
 } from "lucide-react"
 import { toast } from "sonner"
-import { formatCurrency } from "@/lib/contractUtils"
+import { formatCurrency, getDivisionColor } from "@/lib/contractUtils"
 import { format } from "date-fns"
 import CreateContractSheet from "@/components/contract/CreateContractSheet"
 import { InteractivePieChart } from "@/components/charts/InteractivePieChart"
@@ -45,6 +45,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { ContractBadges } from "@/components/contract/ContractBadges"
 
 // --- CONSTANTS & TYPES ---
 
@@ -59,22 +60,10 @@ const PALETTE_COLORS = [
     "#4f46e5", // Indigo
 ]
 
-const DIVISION_COLOR_MAP: Record<string, string> = {
-    "IT": "#3b82f6",     // Blue
-    "HR": "#ec4899",     // Pink
-    "Finance": "#10b981", // Emerald
-    "Legal": "#eab308",  // Yellow
-    "Procurement": "#f97316", // Orange
-    "Operations": "#8b5cf6", // Violet
-    "Marketing": "#ef4444",   // Red
-    "Sales": "#14b8a6",       // Teal
-}
+
 
 const getColorForString = (str: string | null): string => {
     if (!str) return "#94a3b8" // Slate 400 for unknown
-    // Check known map
-    if (DIVISION_COLOR_MAP[str]) return DIVISION_COLOR_MAP[str]
-    // Hash fallback
     let hash = 0
     for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash)
@@ -82,6 +71,8 @@ const getColorForString = (str: string | null): string => {
     const index = Math.abs(hash) % PALETTE_COLORS.length
     return PALETTE_COLORS[index]
 }
+
+/* Local color helpers removed in favor of shared getDivisionColor */
 
 interface ContractTable {
     id: string
@@ -110,20 +101,7 @@ interface ContractTable {
 }
 
 // Helper for color coding (same as PerformancePage)
-const getDivisionColor = (div: string | null) => {
-    switch (div) {
-        case 'TECH': return 'bg-blue-100 text-blue-800 border-blue-200'
-        case 'HRGA': return 'bg-pink-100 text-pink-800 border-pink-200'
-        case 'FIN': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-        case 'LGL': return 'bg-purple-100 text-purple-800 border-purple-200'
-        case 'PROC': return 'bg-orange-100 text-orange-800 border-orange-200'
-        case 'OPS': return 'bg-cyan-100 text-cyan-800 border-cyan-200'
-        case 'EXT': return 'bg-lime-100 text-lime-800 border-lime-200'
-        case 'PLNT': return 'bg-amber-100 text-amber-800 border-amber-200'
-        case 'MGMT': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-        default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-}
+
 
 export function OngoingContractsTable() {
     const router = useRouter()
@@ -386,30 +364,18 @@ export function OngoingContractsTable() {
                                     className="cursor-pointer hover:bg-muted/50"
                                     onClick={() => handleRowClick(task.id)}
                                 >
+
+
                                     <TableCell className="font-medium">
                                         <div className="flex flex-col gap-1">
                                             <div className="flex items-center gap-2">
                                                 <span>{task.title}</span>
-                                                {(task.title?.toLowerCase().includes("amendment") || task.parent_contract_id || task.contract_type_name?.includes("Amendment")) && (
-                                                    <Badge variant="outline" className="bg-violet-100 text-violet-800 border-violet-200 text-[10px] px-1 py-0 h-5">
-                                                        Amendment
-                                                    </Badge>
-                                                )}
-                                                {task.is_cr && (
-                                                    <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200 text-[10px] px-1 py-0 h-5">
-                                                        CR
-                                                    </Badge>
-                                                )}
-                                                {task.is_on_hold && (
-                                                    <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200 text-[10px] px-1 py-0 h-5">
-                                                        On Hold
-                                                    </Badge>
-                                                )}
-                                                {task.is_anticipated && (
-                                                    <Badge variant="outline" className="bg-purple-100 text-purple-800 border-purple-200 text-[10px] px-1 py-0 h-5">
-                                                        Anticipated
-                                                    </Badge>
-                                                )}
+                                                <ContractBadges
+                                                    isAmendment={task.title?.toLowerCase().includes("amendment") || !!task.parent_contract_id || task.contract_type_name?.includes("Amendment")}
+                                                    isCR={task.is_cr}
+                                                    isOnHold={task.is_on_hold}
+                                                    isAnticipated={task.is_anticipated}
+                                                />
                                             </div>
                                             <span className="text-xs text-muted-foreground">{task.contract_number}</span>
                                         </div>

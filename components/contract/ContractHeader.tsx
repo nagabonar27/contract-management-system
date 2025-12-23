@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Combobox, Option } from "@/components/ui/shared/combobox"
 import { FilePenLine, FileCheck } from "lucide-react"
+import { getDivisionColor } from "@/lib/contractUtils"
+import { ContractBadges } from "@/components/contract/ContractBadges"
 
 interface ContractHeaderProps {
     contract: {
@@ -20,6 +22,7 @@ interface ContractHeaderProps {
         current_step: string
         pt?: { name: string } | null
         contract_types?: { name: string } | null
+        parent_contract_id?: string | null
         effective_date?: string | null
         vendor?: string | null
         vendor_2?: string | null
@@ -94,46 +97,34 @@ export function ContractHeader({
         return 'secondary'
     }
 
-    const getDivisionColor = (div: string | null) => {
-        switch (div) {
-            case 'TECH': return 'bg-blue-100 text-blue-800 border-blue-200'
-            case 'HRGA': return 'bg-pink-100 text-pink-800 border-pink-200'
-            case 'FIN': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-            case 'LGL': return 'bg-purple-100 text-purple-800 border-purple-200'
-            case 'PROC': return 'bg-orange-100 text-orange-800 border-orange-200'
-            case 'OPS': return 'bg-cyan-100 text-cyan-800 border-cyan-200'
-            case 'EXT': return 'bg-lime-100 text-lime-800 border-lime-200'
-            case 'PLNT': return 'bg-amber-100 text-amber-800 border-amber-200'
-            case 'MGMT': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-            default: return 'bg-gray-100 text-gray-800 border-gray-200'
-        }
-    }
+    /* getDivisionColor now imported from @/lib/contractUtils */
 
-    const isAmendment = contract?.title?.toLowerCase().includes('amendment') || false
+    // Logic: It's an amendment if it has a direct parent OR the type name says Amendment OR the title says so (legacy fallback)
+    const isAmendment = !!contract?.parent_contract_id ||
+        contract?.contract_types?.name?.toLowerCase().includes('amendment') ||
+        contract?.title?.toLowerCase().includes('amendment') ||
+        false
 
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex-1">
+
+
+
                     <CardTitle className="flex items-center gap-3 flex-wrap mb-2">
                         {contract?.title}
 
-                        {/* Amendment Marker - Beside Contract Name */}
-                        {isAmendment && (
-                            <Badge variant="outline" className="bg-violet-100 text-violet-800 border-violet-200">
-                                Amendment
-                            </Badge>
-                        )}
+                        <ContractBadges
+                            isAmendment={isAmendment}
+                            isCR={isCR}
+                            isOnHold={isOnHold}
+                            isAnticipated={isAnticipated}
+                        />
 
                         <Badge variant={getBadgeVariant()}>
                             {displayStatus}
                         </Badge>
-
-
-                        {/* Status Markers */}
-                        {isCR && <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">CR</Badge>}
-                        {isOnHold && <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">On Hold</Badge>}
-                        {isAnticipated && <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Anticipated</Badge>}
                     </CardTitle>
                     <div className="text-sm text-muted-foreground space-y-1">
                         <div className="flex gap-4">
@@ -378,16 +369,7 @@ export function ContractHeader({
                     </div>
                 ) : (
 
-                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-6 text-sm">
-                        <div>
-                            <span className="block text-muted-foreground">Type</span>
-                            <span className="font-medium">
-                                {(() => {
-                                    const types = contract?.contract_types as any
-                                    return Array.isArray(types) ? (types[0]?.name || '-') : (types?.name || '-')
-                                })()}
-                            </span>
-                        </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
                         <div>
                             <span className="block text-muted-foreground">Category</span>
                             <span className="font-medium">{contract?.category || '-'}</span>

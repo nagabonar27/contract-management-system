@@ -72,23 +72,8 @@ type PicPerformance = {
 }
 
 // Helper for color coding (same as OngoingContractsTable)
-const getDivisionColor = (div: string | null) => {
-    switch (div) {
-        case 'TECH': return 'bg-blue-100 text-blue-800 border-blue-200'
-        case 'HRGA': return 'bg-pink-100 text-pink-800 border-pink-200'
-        case 'FIN': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-        case 'LGL': return 'bg-purple-100 text-purple-800 border-purple-200'
-        case 'PROC': return 'bg-orange-100 text-orange-800 border-orange-200'
-        case 'OPS': return 'bg-cyan-100 text-cyan-800 border-cyan-200'
-        case 'EXT': return 'bg-lime-100 text-lime-800 border-lime-200'
-        case 'PLNT': return 'bg-amber-100 text-amber-800 border-amber-200'
-        case 'MGMT': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-        default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-}
-
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { calculatePriceDifference, formatCurrency } from "@/lib/contractUtils"
+import { calculatePriceDifference, formatCurrency, getDivisionColor } from "@/lib/contractUtils"
 import { format } from "date-fns"
 
 export default function PerformancePage() {

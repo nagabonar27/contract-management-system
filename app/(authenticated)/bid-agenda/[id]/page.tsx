@@ -585,7 +585,7 @@ export default function ContractDetailPage() {
             <div className="flex items-center justify-between">
                 <Button variant="ghost" asChild className="pl-0">
                     <Link href={
-                        contract?.status === 'Completed' ? "/contractmanagement/finished" :
+                        contract?.status === 'Completed' ? "/contractmanagement?tab=active" :
                             contract?.status === 'Active' ? "/contractmanagement?tab=active" :
                                 "/contractmanagement?tab=ongoing"
                     }>

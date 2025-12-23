@@ -415,7 +415,9 @@ export function ActiveContractsTable() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline">v{contract.version}</Badge>
+                                                    <Badge variant="outline" className={getVersionBadgeColor(contract.version)}>
+                                                        v{contract.version}
+                                                    </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <DropdownMenu>
