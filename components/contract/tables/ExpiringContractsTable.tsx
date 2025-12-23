@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Eye, FileEdit, AlertTriangle } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
+import { toast } from "sonner"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 
 interface ExpiringContract {
@@ -89,7 +90,7 @@ export function ExpiringContractsTable() {
             setCriticalCount(critical.length)
         } catch (error: any) {
             console.error('Error fetching contracts:', error)
-            alert('Failed to load contracts: ' + error.message)
+            toast.error('Failed to load contracts', { description: error.message })
         } finally {
             setLoading(false)
         }
@@ -214,11 +215,11 @@ export function ExpiringContractsTable() {
             await supabase.from('contract_bid_agenda').insert(agendaItems)
 
             setIsAmendModalOpen(false)
-            router.push(`/dashboard/contractmanagement/ongoing/${newContract.id}`)
+            router.push(`/contractmanagement/ongoing/${newContract.id}`)
 
         } catch (error: any) {
             console.error("Error creating amendment:", error)
-            alert("Failed to create amendment: " + error.message)
+            toast.error("Failed to create amendment", { description: error.message })
         } finally {
             setIsCreatingAmendment(false)
         }
@@ -256,11 +257,11 @@ export function ExpiringContractsTable() {
 
             setIsFinishModalOpen(false)
             fetchExpiringContracts()
-            alert("Contract updated/finished successfully!")
+            toast.success("Contract updated/finished successfully!")
 
         } catch (error: any) {
             console.error("Error finishing contract:", error)
-            alert("Failed to finish contract: " + error.message)
+            toast.error("Failed to finish contract", { description: error.message })
         }
     }
 

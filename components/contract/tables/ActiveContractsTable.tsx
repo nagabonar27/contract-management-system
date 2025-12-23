@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreVertical, Eye, FileEdit } from "lucide-react"
 import { format } from "date-fns"
+import { toast } from 'sonner'
 import { calculatePriceDifference, formatCurrency } from "@/lib/contractUtils"
 import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
@@ -125,7 +126,7 @@ export function ActiveContractsTable() {
             setContracts(enrichedData)
         } catch (error: any) {
             console.error('Error fetching contracts:', error)
-            alert('Failed to load contracts: ' + error.message)
+            toast.error('Failed to load contracts', { description: error.message })
         } finally {
             setLoading(false)
         }
@@ -206,6 +207,13 @@ export function ActiveContractsTable() {
 
             if (fetchError) throw fetchError
 
+            // Fetch Amendment Contract Type
+            const { data: amendmentType } = await supabase
+                .from('contract_types')
+                .select('id')
+                .ilike('name', '%Amendment%')
+                .single()
+
             const newVersion = (fullOriginal.version || 0) + 1
             const amendmentData = {
                 title: `${fullOriginal.title} - Amendment ${newVersion}`,
@@ -214,7 +222,8 @@ export function ActiveContractsTable() {
                 parent_contract_id: fullOriginal.id,
                 version: newVersion,
                 category: fullOriginal.category,
-                contract_type_id: fullOriginal.contract_type_id,
+                pt_id: fullOriginal.pt_id, // Inherit PT
+                contract_type_id: amendmentType?.id || fullOriginal.contract_type_id, // Use Amendment Type
                 division: fullOriginal.division,
                 department: fullOriginal.department,
                 contract_summary: `Amendment Reason: ${reason}`,
@@ -257,7 +266,11 @@ export function ActiveContractsTable() {
                     pic_name: v.pic_name,
                     pic_phone: v.pic_phone,
                     pic_email: v.pic_email,
-                    is_appointed: v.is_appointed,
+                    is_appointed: v.is_appointed, // Keep appointed status? Usually reset for new bid, but for amendment maybe keep? 
+                    // User said "pull information", usually implies identical state except what changes.
+                    // But typically amendments might re-evaluate. 
+                    // However, `amend/page.tsx` reset these. Here we explicitly copy.
+                    // I will leave this as is since user only complained about PT/Division and Agenda.
                     price_note: v.price_note,
                     tech_eval_note: v.tech_eval_note,
                     kyc_note: v.kyc_note
@@ -265,21 +278,7 @@ export function ActiveContractsTable() {
                 await supabase.from('contract_vendors').insert(vendorsToInsert)
             }
 
-            // 5. Create Default Amendment Aenda
-            const amendmentSteps = [
-                "Drafting Amendment",
-                "Review Amendment",
-                "Internal Contract Signature Process",
-                "Vendor Contract Signature Process"
-            ]
-
-            const agendaItems = amendmentSteps.map(step => ({
-                contract_id: newContract.id,
-                step_name: step,
-                status: 'Pending'
-            }))
-
-            await supabase.from('contract_bid_agenda').insert(agendaItems)
+            // 5. NO AGENDA CREATION (User requested empty agenda)
 
             // 6. Redirect
             setIsAmendModalOpen(false)
@@ -287,7 +286,7 @@ export function ActiveContractsTable() {
 
         } catch (error: any) {
             console.error("Error creating amendment:", error)
-            alert("Failed to create amendment: " + error.message)
+            toast.error("Failed to create amendment", { description: error.message })
         } finally {
             setIsCreatingAmendment(false)
         }
@@ -330,10 +329,11 @@ export function ActiveContractsTable() {
 
             setIsFinishModalOpen(false)
             fetchContracts()
+            toast.success("Contract finished successfully!")
 
         } catch (error: any) {
             console.error("Error finishing contract:", error)
-            alert("Failed to finish contract: " + error.message)
+            toast.error("Failed to finish contract", { description: error.message })
         }
     }
 
@@ -448,11 +448,7 @@ export function ActiveContractsTable() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell>
-                                                    {contract.parent_contract_id ? (
-                                                        <Badge variant="outline">v{contract.version}</Badge>
-                                                    ) : (
-                                                        <span className="text-muted-foreground">Original</span>
-                                                    )}
+                                                    <Badge variant="outline">v{contract.version}</Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <DropdownMenu>

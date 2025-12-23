@@ -23,6 +23,47 @@ interface DateRangePickerProps {
     disabled?: boolean
 }
 
+interface DatePickerProps {
+    className?: string
+    value?: Date
+    onChange?: (date: Date | undefined) => void
+    disabled?: boolean
+}
+
+export function DatePicker({
+    className,
+    value,
+    onChange,
+    disabled
+}: DatePickerProps) {
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button
+                    variant={"outline"}
+                    className={cn(
+                        "w-full justify-start text-left font-normal flex items-center",
+                        !value && "text-muted-foreground",
+                        className
+                    )}
+                    disabled={disabled}
+                >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {value ? format(value, "PPP") : <span>Pick a date</span>}
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+                <Calendar
+                    mode="single"
+                    selected={value}
+                    onSelect={onChange}
+                    initialFocus
+                />
+            </PopoverContent>
+        </Popover>
+    )
+}
+
 export function DateRangePicker({
     className,
     value,
@@ -37,7 +78,7 @@ export function DateRangePicker({
                         id="date"
                         variant={"outline"}
                         className={cn(
-                            "w-[100%] justify-start text-left font-normal",
+                            "w-[100%] justify-start text-left font-normal flex items-center",
                             !value && "text-muted-foreground",
                             className
                         )}

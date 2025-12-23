@@ -37,7 +37,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
             setLoading(false)
         } else {
             router.refresh()
-            router.push("/dashboard")
+            router.push("/contractmanagement?tab=ongoing")
         }
     }
 

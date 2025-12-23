@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Check, ChevronsUpDown, ChevronLeft, Plus, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cn } from "@/lib/utils"
@@ -90,7 +91,7 @@ export default function CreateContractPage() {
         if (!searchPT) return
         const { data, error } = await supabase.from('pt').insert({ name: searchPT }).select().single()
         if (error) {
-            alert("Error creating PT: " + error.message)
+            toast.error("Error creating PT", { description: error.message })
         } else if (data) {
             const newOption = { id: data.id, label: data.name, value: data.name }
             setPtOptions(prev => [...prev, newOption])
@@ -111,7 +112,7 @@ export default function CreateContractPage() {
     // --- SUBMIT (Database Interactions) ---
     const handleSubmit = async () => {
         if (!contractName || !selectedPT || !selectedType || !selectedDivision) {
-            alert("Please fill in all required fields.")
+            toast.error("Validation Error", { description: "Please fill in all required fields." })
             return
         }
 
@@ -143,11 +144,12 @@ export default function CreateContractPage() {
 
             if (contractError) throw contractError
 
-            router.push('/contractmanagement/ongoing')
+            toast.success("Contract created successfully!")
+            router.push('/contractmanagement?tab=ongoing')
 
         } catch (error: any) {
             console.error("Error creating contract:", error)
-            alert("Failed to create contract: " + error.message)
+            toast.error("Failed to create contract", { description: error.message })
         } finally {
             setIsLoading(false)
         }
@@ -157,7 +159,7 @@ export default function CreateContractPage() {
         <div className="flex-1 space-y-4 p-8 pt-6 max-w-3xl mx-auto w-full">
             <div className="flex items-center gap-4 mb-6">
                 <Button variant="ghost" size="icon" asChild>
-                    <Link href="/contractmanagement/ongoing">
+                    <Link href="/contractmanagement?tab=ongoing">
                         <ChevronLeft className="h-4 w-4" />
                     </Link>
                 </Button>

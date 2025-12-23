@@ -14,7 +14,6 @@ export function ContractNav({ activeTab, onTabChange }: ContractNavProps) {
         { id: "expiring", label: "Expiring Soon" },
         { id: "expired", label: "Expired Contracts" },
         { id: "finished", label: "Finished Contracts" },
-        { id: "performance", label: "Performance" }, // Keep Performance as link?
     ]
 
     return (

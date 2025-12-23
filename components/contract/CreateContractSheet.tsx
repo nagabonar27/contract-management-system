@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Check, ChevronsUpDown, Loader2, Plus } from "lucide-react"
+import { toast } from "sonner"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 import { cn } from "@/lib/utils"
@@ -61,12 +62,15 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
     // --- CATEGORY STATE ---
     const [openCategory, setOpenCategory] = React.useState(false)
     const [categoryOptions, setCategoryOptions] = React.useState<Option[]>([
+        { label: "Persetujuan Teknis", value: "persetujuan_teknis" },
         { label: "Rent", value: "rent" },
         { label: "Consignment", value: "consignment" },
         { label: "Layanan Kesehatan", value: "layanan_kesehatan" },
         { label: "Rehab DAS", value: "rehab_das" },
         { label: "Pengeboran Inti", value: "pengeboran_inti" },
         { label: "Jasa Logistik", value: "jasa_logistik" },
+        { label: "Geolistrik", value: "geolistrik" },
+        { label: "Pest Control", value: "pest_control" },
     ])
     const [selectedCategory, setSelectedCategory] = React.useState<Option | null>(null)
     const [searchCategory, setSearchCategory] = React.useState("")
@@ -101,8 +105,10 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
         if (!searchPT) return
         const { data, error } = await supabase.from('pt').insert({ name: searchPT }).select().single()
         if (error) {
-            alert("Error creating PT: " + error.message)
-        } else if (data) {
+            toast.error("Error creating PT", { description: error.message })
+            return
+        }
+        if (data) {
             const newOption = { id: data.id, label: data.name, value: data.name }
             setPtOptions(prev => [...prev, newOption])
             setSelectedPT(newOption)
@@ -119,10 +125,13 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
         setOpenCategory(false)
     }
 
+
     // --- SUBMIT (Database Interactions) ---
     const handleSubmit = async () => {
         if (!contractName || !selectedPT || !selectedType || !selectedDivision) {
-            alert("Please fill in all required fields.")
+            toast.error("Validation Error", {
+                description: "Please fill in Contract Title, Contract Type, Division and PT Name."
+            })
             return
         }
 
@@ -163,7 +172,7 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
 
         } catch (error: any) {
             console.error("Error creating contract:", error)
-            alert("Failed to create contract: " + error.message)
+            toast.error("Failed to create contract", { description: error.message })
         } finally {
             setIsLoading(false)
         }

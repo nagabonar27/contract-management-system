@@ -12,6 +12,7 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { calculatePriceDifference, formatCurrency } from "@/lib/contractUtils"
@@ -228,7 +229,7 @@ export function OngoingContractsTable() {
             fetchTasks()
         } catch (error: any) {
             console.error("Error deleting contract:", error)
-            alert("Failed to delete contract: " + error.message)
+            toast.error("Failed to delete contract", { description: error.message })
         } finally {
             setIsDeleteDialogOpen(false)
             setContractToDelete(null)

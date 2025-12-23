@@ -13,7 +13,9 @@ import {
     InputGroupInput,
     InputGroupText,
 } from "@/components/ui/input-group"
-import { ISODateInput } from "@/components/ui/iso-date-input"
+// import { ISODateInput } from "@/components/ui/iso-date-input" // Removing unused
+import { DateRangePicker, DateRange } from "@/components/DatePicker"
+import { format, parseISO } from "date-fns"
 
 // Import types from BidAgendaSection to avoid duplication
 import type { AgendaItem, ContractVendor } from "./BidAgendaSection"
@@ -143,25 +145,41 @@ export function VendorEvaluationRows({
                                             {(isKYC || isClarification || isPrice || isRevisedPrice) && (
                                                 <>
                                                     <div className="flex items-center gap-2">
-                                                        <Label className="text-xs text-muted-foreground whitespace-nowrap">Start:</Label>
-                                                        <ISODateInput
-                                                            value={getStepDate(v, 'start_date')}
-                                                            onChange={val => updateStepDate(v, 'start_date', val)}
-                                                            className="w-[140px] h-8 text-xs"
-                                                        />
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Label className="text-xs text-muted-foreground whitespace-nowrap">End:</Label>
-                                                        <ISODateInput
-                                                            value={getStepDate(v, 'end_date')}
-                                                            onChange={val => {
-                                                                // Auto-fill start if not set
-                                                                if (val && !getStepDate(v, 'start_date')) {
-                                                                    updateStepDate(v, 'start_date', val)
-                                                                }
-                                                                updateStepDate(v, 'end_date', val)
+                                                        <Label className="text-xs text-muted-foreground whitespace-nowrap">Timeline:</Label>
+                                                        <DateRangePicker
+                                                            className="w-[240px] mx-auto"
+                                                            value={{
+                                                                from: getStepDate(v, 'start_date') ? parseISO(getStepDate(v, 'start_date')) : undefined,
+                                                                to: getStepDate(v, 'end_date') ? parseISO(getStepDate(v, 'end_date')) : undefined,
                                                             }}
-                                                            className="w-[140px] h-8 text-xs"
+                                                            onChange={(val: DateRange | undefined) => {
+                                                                const startDate = val?.from ? format(val.from, 'yyyy-MM-dd') : ""
+                                                                const endDate = val?.to ? format(val.to, 'yyyy-MM-dd') : ""
+
+                                                                // Use updateStepDate helper logic but customized for batch update
+                                                                // Since helper updates one field at a time, we'll manually update both here
+                                                                const stepDates = v.step_dates || []
+                                                                const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === agendaItem.id)
+
+                                                                let updated
+                                                                if (existingIndex >= 0) {
+                                                                    updated = [...stepDates]
+                                                                    updated[existingIndex] = {
+                                                                        ...updated[existingIndex],
+                                                                        start_date: startDate,
+                                                                        end_date: endDate
+                                                                    }
+                                                                } else {
+                                                                    updated = [...stepDates, {
+                                                                        id: `temp-${Date.now()}`,
+                                                                        vendor_id: v.id,
+                                                                        agenda_step_id: agendaItem.id,
+                                                                        start_date: startDate,
+                                                                        end_date: endDate
+                                                                    }]
+                                                                }
+                                                                onUpdateVendorData(v.id, 'step_dates' as any, updated)
+                                                            }}
                                                         />
                                                     </div>
                                                     {isClarification && (

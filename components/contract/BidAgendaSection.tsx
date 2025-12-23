@@ -9,8 +9,8 @@ import { AddStepModal } from "@/components/ui/shared/add-step-modal"
 import { Trash2, Pencil, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { VendorEvaluationRows } from "./VendorEvaluationRows"
-import { ISODateInput } from "@/components/ui/iso-date-input"
-import { DateRangePicker, DateRange } from "@/components/DatePicker"
+// import { ISODateInput } from "@/components/ui/iso-date-input"
+import { DateRangePicker, DatePicker, DateRange } from "@/components/DatePicker"
 import { format, parseISO } from "date-fns"
 
 // Export types for use in other components
@@ -179,25 +179,28 @@ export function BidAgendaSection({
                                                 {(isVendorFindings || isKYC || isClarification || isPrice || isRevisedPrice) ? (
                                                     <span className="text-muted-foreground text-xs italic">Per vendor</span>
                                                 ) : item.step_name.includes("Completed") ? (
+                                                    // COMPLETED STEP: Use DatePicker (Single)
                                                     isEditingAgenda ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <Label className="text-xs whitespace-nowrap">Completion Date:</Label>
-                                                            <ISODateInput
-                                                                value={item.end_date || item.start_date || ""}
-                                                                onChange={val => {
-                                                                    onUpdateAgendaItem(item.id, 'start_date', val)
-                                                                    onUpdateAgendaItem(item.id, 'end_date', val)
+                                                        <div className="flex justify-center w-full">
+                                                            <DatePicker
+                                                                className="w-[240px] mx-auto"
+                                                                value={item.end_date ? parseISO(item.end_date) : undefined}
+                                                                onChange={(date) => {
+                                                                    const d = date ? format(date, 'yyyy-MM-dd') : ""
+                                                                    onUpdateAgendaItem(item.id, 'start_date', d)
+                                                                    onUpdateAgendaItem(item.id, 'end_date', d)
                                                                 }}
-                                                                className="w-[140px] h-8 text-xs"
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <span className="text-muted-foreground">{item.end_date || item.start_date || "-"}</span>
+                                                        <div className="flex flex-col items-center">
+                                                            <span className="text-muted-foreground">{item.start_date && item.end_date ? `${item.start_date} - ${item.end_date}` : (item.end_date || item.start_date || "-")}</span>
+                                                        </div>
                                                     )
                                                 ) : isEditingAgenda ? (
-                                                    <div className="flex justify-center">
+                                                    <div className="flex justify-center w-full">
                                                         <DateRangePicker
-                                                            className="w-[240px]"
+                                                            className="w-[240px] mx-auto"
                                                             value={{
                                                                 from: item.start_date ? parseISO(item.start_date) : undefined,
                                                                 to: item.end_date ? parseISO(item.end_date) : undefined,
@@ -314,65 +317,42 @@ export function BidAgendaSection({
                                                                     {isEditingAgenda && (
                                                                         <>
                                                                             <div className="flex items-center gap-2">
-                                                                                <Label className="text-xs text-muted-foreground whitespace-nowrap">Start:</Label>
-                                                                                <ISODateInput
+                                                                                <Label className="text-xs text-muted-foreground whitespace-nowrap">Timeline:</Label>
+                                                                                <DateRangePicker
+                                                                                    className="w-[240px]"
                                                                                     value={(() => {
                                                                                         const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
-                                                                                        return stepDate?.start_date || ""
-                                                                                    })()}
-                                                                                    onChange={val => {
-                                                                                        const stepDates = v.step_dates || []
-                                                                                        const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === item.id)
-
-                                                                                        let updated
-                                                                                        if (existingIndex >= 0) {
-                                                                                            updated = [...stepDates]
-                                                                                            updated[existingIndex] = { ...updated[existingIndex], start_date: val }
-                                                                                        } else {
-                                                                                            updated = [...stepDates, {
-                                                                                                id: `temp-${Date.now()}`,
-                                                                                                vendor_id: v.id,
-                                                                                                agenda_step_id: item.id,
-                                                                                                start_date: val,
-                                                                                                end_date: null
-                                                                                            }]
+                                                                                        return {
+                                                                                            from: stepDate?.start_date ? parseISO(stepDate.start_date) : undefined,
+                                                                                            to: stepDate?.end_date ? parseISO(stepDate.end_date) : undefined
                                                                                         }
-                                                                                        onUpdateVendorData(v.id, 'step_dates' as any, updated)
-                                                                                    }}
-                                                                                    className="w-[140px] h-8 text-xs"
-                                                                                />
-                                                                            </div>
-                                                                            <div className="flex items-center gap-2">
-                                                                                <Label className="text-xs text-muted-foreground whitespace-nowrap">End:</Label>
-                                                                                <ISODateInput
-                                                                                    value={(() => {
-                                                                                        const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
-                                                                                        return stepDate?.end_date || ""
                                                                                     })()}
-                                                                                    onChange={val => {
+                                                                                    onChange={(val: DateRange | undefined) => {
                                                                                         const stepDates = v.step_dates || []
                                                                                         const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === item.id)
+
+                                                                                        const startDate = val?.from ? format(val.from, 'yyyy-MM-dd') : null
+                                                                                        const endDate = val?.to ? format(val.to, 'yyyy-MM-dd') : null
 
                                                                                         let updated
                                                                                         if (existingIndex >= 0) {
                                                                                             updated = [...stepDates]
-                                                                                            updated[existingIndex] = { ...updated[existingIndex], end_date: val }
-                                                                                            // Auto-fill start if not set
-                                                                                            if (val && !updated[existingIndex].start_date) {
-                                                                                                updated[existingIndex].start_date = val
+                                                                                            updated[existingIndex] = {
+                                                                                                ...updated[existingIndex],
+                                                                                                start_date: startDate,
+                                                                                                end_date: endDate
                                                                                             }
                                                                                         } else {
                                                                                             updated = [...stepDates, {
                                                                                                 id: `temp-${Date.now()}`,
                                                                                                 vendor_id: v.id,
                                                                                                 agenda_step_id: item.id,
-                                                                                                start_date: val,
-                                                                                                end_date: val
+                                                                                                start_date: startDate,
+                                                                                                end_date: endDate
                                                                                             }]
                                                                                         }
                                                                                         onUpdateVendorData(v.id, 'step_dates' as any, updated)
                                                                                     }}
-                                                                                    className="w-[140px] h-8 text-xs"
                                                                                 />
                                                                             </div>
                                                                             <div className="flex items-center gap-2">

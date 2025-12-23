@@ -10,6 +10,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
+import { DatePicker } from "@/components/DatePicker"
+import { parseISO, format } from "date-fns"
 
 interface FinalizeContractModalProps {
     open: boolean
@@ -112,11 +114,9 @@ export function FinalizeContractModal({
                             <Label htmlFor="effective_date" className="text-right">
                                 Effective Date
                             </Label>
-                            <Input
-                                id="effective_date"
-                                type="date"
-                                value={effectiveDate}
-                                onChange={(e) => onEffectiveDateChange(e.target.value)}
+                            <DatePicker
+                                value={effectiveDate ? parseISO(effectiveDate) : undefined}
+                                onChange={(date) => onEffectiveDateChange(date ? format(date, 'yyyy-MM-dd') : "")}
                                 className="col-span-3"
                             />
                         </div>
@@ -128,11 +128,9 @@ export function FinalizeContractModal({
                             <Label htmlFor="expiry_date" className="text-right">
                                 Expiry Date
                             </Label>
-                            <Input
-                                id="expiry_date"
-                                type="date"
-                                value={expiryDate}
-                                onChange={(e) => onExpiryDateChange(e.target.value)}
+                            <DatePicker
+                                value={expiryDate ? parseISO(expiryDate) : undefined}
+                                onChange={(date) => onExpiryDateChange(date ? format(date, 'yyyy-MM-dd') : "")}
                                 className="col-span-3"
                             />
                         </div>

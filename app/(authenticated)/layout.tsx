@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react" // Add useState
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import {
@@ -8,7 +9,11 @@ import {
     ChevronsUpDown,
     User as UserIcon,
     Newspaper,
-    Users // New Icon for User Management
+    Users, // New Icon for User Management
+    ChevronLeft, // Add ChevronLeft
+    ChevronRight, // Add ChevronRight
+    Menu, // Add Menu icon if needed for mobile, but focusing on collapse for now
+    BarChart3 // Add BarChart3 icon
 } from "lucide-react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { isAdmin } from "@/lib/adminUtils" // Import your utility
@@ -24,6 +29,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils" // Ensure cn is imported or use template literals
+
 
 // import hook
 import { useAuth } from '@/context/AuthContext'
@@ -38,6 +45,7 @@ export default function DashboardLayout({
     const { user, profile } = useAuth()
     const supabase = createClientComponentClient() // Cookie-aware client
     const userEmail = user?.email || ""
+    const [isCollapsed, setIsCollapsed] = useState(false) // Add state
 
     // Check if user is an admin or analyst
     const showAdminLinks = isAdmin(profile?.position)
@@ -55,65 +63,119 @@ export default function DashboardLayout({
 
     return (
         <div className="flex h-screen w-full bg-muted/40">
-            <aside className="hidden w-64 flex-col border-r bg-background sm:flex">
-                <div className="flex h-14 items-center border-b px-6 font-semibold lg:h-[60px]">
-                    Contract Management
+            <aside
+                className={cn(
+                    "hidden flex-col border-r bg-background sm:flex transition-all duration-300 ease-in-out",
+                    isCollapsed ? "w-[70px]" : "w-64"
+                )}
+            >
+                <div className={cn(
+                    "flex h-14 items-center border-b px-4 lg:h-[60px]",
+                    isCollapsed ? "justify-center" : "justify-between"
+                )}>
+                    {!isCollapsed && (
+                        <div className="font-semibold truncate">
+                            CMS
+                        </div>
+                    )}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className="h-8 w-8"
+                    >
+                        {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+                    </Button>
                 </div>
 
                 <nav className="flex-1 overflow-auto py-4">
-                    <div className="px-4 grid gap-1">
+                    <div className="px-2 grid gap-1">
                         <p className="px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">Main Menu</p>
 
                         <Link
                             href="/dashboard"
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname === "/dashboard" ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
-                                }`}
+                            className={cn(
+                                "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                                pathname === "/dashboard" ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted",
+                                isCollapsed && "justify-center px-2"
+                            )}
+                            title={isCollapsed ? "Dashboard" : undefined}
                         >
                             <LayoutDashboard className="h-4 w-4" />
-                            Dashboard
+                            {!isCollapsed && <span>Dashboard</span>}
                         </Link>
 
                         <Link
-                            href="/contractmanagement/ongoing"
-                            className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/contractmanagement") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
-                                }`}
+                            href="/contractmanagement?tab=ongoing"
+                            className={cn(
+                                "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                                pathname.startsWith("/contractmanagement") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted",
+                                isCollapsed && "justify-center px-2"
+                            )}
+                            title={isCollapsed ? "Contract Management" : undefined}
                         >
                             <Newspaper className="h-4 w-4" />
-                            Contract Management
+                            {!isCollapsed && <span>Contract Management</span>}
+                        </Link>
+
+                        <Link
+                            href="/performance"
+                            className={cn(
+                                "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                                pathname === "/performance" ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted",
+                                isCollapsed && "justify-center px-2"
+                            )}
+                            title={isCollapsed ? "Performance" : undefined}
+                        >
+                            <BarChart3 className="h-4 w-4" />
+                            {!isCollapsed && <span>Performance</span>}
                         </Link>
 
                         {/* --- ADMIN SECTION --- */}
                         {showAdminLinks && (
                             <>
-                                <div className="mt-4 px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">System</div>
+                                {!isCollapsed && (
+                                    <div className="mt-4 px-3 text-[10px] font-medium uppercase text-muted-foreground mb-2">System</div>
+                                )}
                                 <Link
                                     href="/admin/users"
-                                    className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary ${pathname.startsWith("/admin") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted"
-                                        }`}
+                                    className={cn(
+                                        "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                                        pathname.startsWith("/admin") ? "bg-muted text-primary" : "text-muted-foreground hover:bg-muted",
+                                        isCollapsed && "justify-center px-2"
+                                    )}
+                                    title={isCollapsed ? "User Management" : undefined}
                                 >
                                     <Users className="h-4 w-4" />
-                                    User Management
+                                    {!isCollapsed && <span>User Management</span>}
                                 </Link>
                             </>
                         )}
                     </div>
                 </nav>
 
-                <div className="mt-auto p-4 border-t">
+                <div className="mt-auto p-2 border-t">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="w-full h-auto p-2 justify-start hover:bg-muted">
-                                <div className="flex items-center gap-3 w-full">
-                                    <Avatar className="h-9 w-9 border">
+                            <Button variant="ghost" className={cn(
+                                "w-full h-auto p-2 hover:bg-muted",
+                                isCollapsed ? "justify-center" : "justify-start"
+                            )}>
+                                <div className={cn("flex items-center gap-3 w-full", isCollapsed && "justify-center")}>
+                                    <Avatar className="h-9 w-9 border shrink-0">
                                         <AvatarFallback className="bg-primary/10 text-primary">
                                             {displayName.charAt(0)}
                                         </AvatarFallback>
                                     </Avatar>
-                                    <div className="flex flex-col items-start text-left text-sm flex-1 overflow-hidden">
-                                        <span className="font-semibold truncate w-full">{displayName}</span>
-                                        <span className="text-xs font-medium text-blue-600 truncate w-full">{displayPosition}</span>
-                                    </div>
-                                    <ChevronsUpDown className="h-4 w-4 text-muted-foreground opacity-50" />
+                                    {!isCollapsed && (
+                                        <>
+                                            <div className="flex flex-col items-start text-left text-sm flex-1 overflow-hidden">
+                                                <span className="font-semibold truncate w-full">{displayName}</span>
+                                                <span className="text-xs font-medium text-blue-600 truncate w-full">{displayPosition}</span>
+                                            </div>
+                                            <ChevronsUpDown className="h-4 w-4 text-muted-foreground opacity-50" />
+                                        </>
+                                    )}
                                 </div>
                             </Button>
                         </DropdownMenuTrigger>
@@ -140,9 +202,8 @@ export default function DashboardLayout({
             </aside >
 
             <div className="flex flex-col flex-1">
-                {/* Hide header on contract detail page so ContractHeader takes over */}
-                {/* Logic: Hide if it's a bid-agenda detail page (e.g. /bid-agenda/123) */}
-                {(!pathname.includes('/bid-agenda/') || pathname.endsWith('/create')) && (
+                {/* Logic: Hide if it's a bid-agenda detail page (e.g. /bid-agenda/123) OR contract management page */}
+                {(!pathname.includes('/bid-agenda/') && !pathname.includes('contractmanagement') || pathname.endsWith('/create')) && (
                     <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-6 lg:h-[60px]">
                         <h1 className="text-lg font-semibold capitalize">
                             {pathname.split('/').pop()?.replace(/-/g, ' ')}

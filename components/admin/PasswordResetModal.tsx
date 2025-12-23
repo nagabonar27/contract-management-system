@@ -3,6 +3,7 @@
 
 import { useState } from "react"
 import { resetUserPassword } from "@/app/actions/admin"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -18,9 +19,9 @@ export default function PasswordResetModal({ userId, userName }: { userId: strin
         try {
             await resetUserPassword(userId, password)
             setOpen(false)
-            alert("Password updated successfully")
+            toast.success("Password updated successfully")
         } catch (e) {
-            alert("Failed to update")
+            toast.error("Failed to update password")
         } finally {
             setLoading(false)
         }

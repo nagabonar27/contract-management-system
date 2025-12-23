@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { MoreVertical, Eye } from "lucide-react"
 import { format } from "date-fns"
+import { toast } from "sonner"
 
 interface FinishedContract {
     id: string
@@ -51,7 +52,7 @@ export function FinishedContractsTable() {
             setContracts(data || [])
         } catch (error: any) {
             console.error('Error fetching contracts:', error)
-            alert('Failed to load contracts: ' + error.message)
+            toast.error('Failed to load contracts', { description: error.message })
         } finally {
             setLoading(false)
         }

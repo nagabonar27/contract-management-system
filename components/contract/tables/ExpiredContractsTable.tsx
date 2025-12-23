@@ -6,6 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreVertical, Eye, FileEdit } from "lucide-react"
@@ -183,7 +184,7 @@ export function ExpiredContractsTable() {
             router.push(`/bid-agenda/${newContract.id}`)
         } catch (error: any) {
             console.error("Error creating amendment:", error)
-            alert("Failed to create amendment: " + error.message)
+            toast.error("Failed to create amendment", { description: error.message })
         } finally {
             setIsCreatingAmendment(false)
         }
@@ -220,12 +221,13 @@ export function ExpiredContractsTable() {
             if (error) throw error
 
             setIsFinishModalOpen(false)
+            setFinishRemarks("") // Clear remarks after successful finish
+            toast.success("Contract finished successfully!")
             fetchExpiredContracts()
-            alert("Contract finished successfully!")
 
         } catch (error: any) {
             console.error("Error finishing contract:", error)
-            alert("Failed to finish contract: " + error.message)
+            toast.error("Failed to finish contract", { description: error.message })
         }
     }
 

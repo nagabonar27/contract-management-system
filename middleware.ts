@@ -45,14 +45,16 @@ export async function middleware(req: NextRequest) {
 
     // 2. If user is usage LOGGED IN and tries to access Login page -> Redirect to Dashboard
     if (session && isAuthRoute) {
-        url.pathname = '/dashboard'
+        url.pathname = '/contractmanagement'
+        url.search = '?tab=ongoing'
         return NextResponse.redirect(url)
     }
 
     // 3. (Optional) Redirect root '/' to '/dashboard' if logged in, or '/login' if not
     if (url.pathname === '/') {
         if (session) {
-            url.pathname = '/dashboard'
+            url.pathname = '/contractmanagement'
+            url.search = '?tab=ongoing'
             return NextResponse.redirect(url)
         } else {
             url.pathname = '/login'

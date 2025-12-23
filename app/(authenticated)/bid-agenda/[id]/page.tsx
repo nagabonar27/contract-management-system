@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
 import { isAfter, parseISO } from "date-fns"
+import { toast } from "sonner"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { isAdmin } from "@/lib/adminUtils"
@@ -264,10 +265,10 @@ export default function ContractDetailPage() {
         }).eq('id', id)
 
         if (error) {
-            alert("Failed to revert: " + error.message)
+            toast.error("Failed to revert", { description: error.message })
         } else {
             setContract(prev => prev ? { ...prev, status: 'On Progress' } : null)
-            alert("Contract reverted to 'On Progress'!")
+            toast.success("Contract reverted to 'On Progress'!")
         }
     }
 
@@ -292,7 +293,7 @@ export default function ContractDetailPage() {
             created_by: editForm.created_by || contract.created_by // Only update if set
         }).eq('id', id)
 
-        if (error) alert(error.message)
+        if (error) toast.error("Failed to update status", { description: error.message })
         else {
             setContract(prev => prev ? {
                 ...prev,
@@ -313,7 +314,7 @@ export default function ContractDetailPage() {
     // --- AGENDA ACTIONS ---
     const handleAddStep = async (stepName: string) => {
         const { data, error } = await supabase.from('contract_bid_agenda').insert({ contract_id: id, step_name: stepName, status: 'Pending' }).select().single()
-        if (error) alert("Failed to add step: " + error.message)
+        if (error) toast.error("Failed to add step", { description: error.message })
         else if (data) {
             setAgendaList(prev => [...prev, data])
         }
@@ -323,7 +324,7 @@ export default function ContractDetailPage() {
         if (!confirm("Are you sure you want to delete this step?")) return
         const { error } = await supabase.from('contract_bid_agenda').delete().eq('id', stepId)
         if (error) {
-            alert("Delete failed: " + error.message)
+            toast.error("Delete failed", { description: error.message })
         } else {
             setAgendaList(prev => prev.filter(i => i.id !== stepId))
         }
@@ -353,7 +354,7 @@ export default function ContractDetailPage() {
             })
             .select()
             .single()
-        if (error) alert(error.message)
+        if (error) toast.error("Failed to add vendor", { description: error.message })
         else if (data) {
             setVendorList(prev => [...prev, data])
             setNewVendorName("")
@@ -374,7 +375,7 @@ export default function ContractDetailPage() {
 
         if (finalizeEffectiveDate && finalizeExpiryDate) {
             if (isAfter(parseISO(finalizeEffectiveDate), parseISO(finalizeExpiryDate)) || finalizeEffectiveDate === finalizeExpiryDate) {
-                alert("Expiry Date must be AFTER the Effective Date.")
+                toast.error("Invalid Date Range", { description: "Expiry Date must be AFTER the Effective Date." })
                 return
             }
         }
@@ -402,7 +403,7 @@ export default function ContractDetailPage() {
         }).eq('id', id)
 
         if (error) {
-            alert("Error completing contract: " + error.message)
+            toast.error("Error completing contract", { description: error.message })
         } else {
             setContract(prev => prev ? {
                 ...prev,
@@ -417,7 +418,7 @@ export default function ContractDetailPage() {
                 expiry_date: finalizeExpiryDate
             }))
             setShowFinalizeModal(false)
-            alert(targetStatus === 'Completed' ? "Contract Archived as Inactive/Completed." : "Contract activated successfully!")
+            toast.success(targetStatus === 'Completed' ? "Contract Archived as Inactive/Completed." : "Contract activated successfully!")
             router.push(targetStatus === 'Completed' ? "/contractmanagement/finished" : "/contractmanagement/active")
         }
     }
@@ -431,11 +432,11 @@ export default function ContractDetailPage() {
         }).eq('id', id)
 
         if (error) {
-            alert("Error extending contract: " + error.message)
+            toast.error("Error extending contract", { description: error.message })
         } else {
             setContract(prev => prev ? { ...prev, expiry_date: newExpiryDate } : null)
             setEditForm(prev => ({ ...prev, expiry_date: newExpiryDate }))
-            alert("Contract extended successfully!")
+            toast.success("Contract extended successfully!")
         }
     }
 
@@ -568,9 +569,9 @@ export default function ContractDetailPage() {
 
             setIsEditingAgenda(false)
             setIsEditingHeader(false)
-            alert("All changes saved successfully!")
+            toast.success("All changes saved successfully!")
         } catch (err: any) {
-            alert("Failed to save: " + err.message)
+            toast.error("Failed to save", { description: err.message })
             console.error(err)
         } finally {
             setIsSavingAgenda(false)
@@ -586,7 +587,7 @@ export default function ContractDetailPage() {
                     <Link href={
                         contract?.status === 'Completed' ? "/contractmanagement/finished" :
                             contract?.status === 'Active' ? "/contractmanagement/active" :
-                                "/contractmanagement/ongoing"
+                                "/contractmanagement?tab=ongoing"
                     }>
                         <ChevronLeft className="mr-2 h-4 w-4" /> Back
                     </Link>

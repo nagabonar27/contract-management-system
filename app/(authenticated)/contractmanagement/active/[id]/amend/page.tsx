@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { toast } from "sonner"
 import { ArrowLeft, FileEdit } from "lucide-react"
 
 interface OriginalContract {
@@ -15,6 +16,7 @@ interface OriginalContract {
     title: string
     contract_number: string
     category: string | null
+    division: string | null // Added division
     pt_id: number | null
     contract_type_id: number | null
     department: string | null
@@ -41,12 +43,26 @@ export default function AmendContractPage() {
     const [amendmentReason, setAmendmentReason] = useState("")
     const [amendmentType, setAmendmentType] = useState<"extension" | "value_modification" | "scope_change">("extension")
     const [newTitle, setNewTitle] = useState("")
+    const [amendmentTypeId, setAmendmentTypeId] = useState<number | null>(null)
 
     useEffect(() => {
         if (contractId) {
             fetchOriginalContract()
         }
+        fetchAmendmentType()
     }, [contractId])
+
+    const fetchAmendmentType = async () => {
+        const { data, error } = await supabase
+            .from('contract_types')
+            .select('id, name')
+            .ilike('name', '%Amendment%')
+            .single()
+
+        if (data) {
+            setAmendmentTypeId(data.id)
+        }
+    }
 
     const fetchOriginalContract = async () => {
         setLoading(true)
@@ -63,7 +79,7 @@ export default function AmendContractPage() {
             setNewTitle(data.title + " (Amendment)")
         } catch (error: any) {
             console.error('Error fetching contract:', error)
-            alert('Failed to load contract: ' + error.message)
+            toast.error('Failed to load contract', { description: error.message })
         } finally {
             setLoading(false)
         }
@@ -72,7 +88,12 @@ export default function AmendContractPage() {
     const handleCreateAmendment = async () => {
         if (!originalContract) return
         if (!amendmentReason.trim()) {
-            alert("Please provide an amendment reason")
+            toast.error("Validation Error", { description: "Please provide an amendment reason" })
+            return
+        }
+        if (!amendmentTypeId) {
+            toast.error("System Error", { description: "Amendment Contract Type could not be found. Please contact admin." })
+            fetchAmendmentType() // Retry fetching
             return
         }
 
@@ -90,9 +111,10 @@ export default function AmendContractPage() {
                 .insert({
                     title: newTitle,
                     category: originalContract.category,
-                    pt_id: originalContract.pt_id,
-                    contract_type_id: originalContract.contract_type_id,
-                    department: originalContract.department,
+                    division: originalContract.division, // Inherit Division
+                    pt_id: originalContract.pt_id, // Inherit PT
+                    contract_type_id: amendmentTypeId!, // Strictly enforce Amendment Type
+                    department: originalContract.department, // Inherit Department (just in case)
                     is_cr: originalContract.is_cr,
                     is_on_hold: originalContract.is_on_hold,
                     is_anticipated: originalContract.is_anticipated,
@@ -157,11 +179,11 @@ export default function AmendContractPage() {
                 // Don't throw - this is optional
             }
 
-            alert(`Amendment created successfully! Version ${newVersion}`)
+            toast.success(`Amendment created successfully! Version ${newVersion}`)
             router.push(`/bid-agenda/${newContract.id}`)
         } catch (error: any) {
             console.error('Error creating amendment:', error)
-            alert('Failed to create amendment: ' + error.message)
+            toast.error('Failed to create amendment', { description: error.message })
         } finally {
             setCreating(false)
         }
