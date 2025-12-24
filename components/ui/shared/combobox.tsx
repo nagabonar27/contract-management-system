@@ -82,7 +82,7 @@ export function Combobox({
                                     className="w-full justify-start"
                                     onClick={handleCreate}
                                 >
-                                    <Plus className="mr-2 h-3 w-3" /> Create "{search}"
+                                    <Plus className="mr-2 h-3 w-3" /> Create &quot;{search}&quot;
                                 </Button>
                             )}
                         </CommandEmpty>

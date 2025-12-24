@@ -99,7 +99,7 @@ export function BidAgendaSection({
         const isAppointedVendor = step.toLowerCase() === "appointed vendor"
         const isRevisedPrice = step.toLowerCase().includes("revised price")
         const isKYC = step.toLowerCase().includes("kyc")
-        const isTechEval = step.toLowerCase().includes("technical evaluation")
+        const isTechEval = step.toLowerCase().includes("tech eval") || step.toLowerCase().includes("technical evaluation")
         const isPrice = step.toLowerCase().includes("price") && !isRevisedPrice
 
         const isVendorDependent = (isKYC || isTechEval || isPrice || isRevisedPrice || isAppointedVendor || isClarification) && !isVendorFindings

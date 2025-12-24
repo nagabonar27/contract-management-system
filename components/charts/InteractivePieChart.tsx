@@ -33,6 +33,28 @@ interface InteractivePieChartProps {
 }
 
 export function InteractivePieChart({ title, description, data, label }: InteractivePieChartProps) {
+    // Default active item is "All" to show total first
+    const [activeName, setActiveName] = React.useState("All")
+
+    const safeData = React.useMemo(() => data || [], [data])
+
+    const totalValue = React.useMemo(() =>
+        safeData.reduce((acc, curr) => acc + curr.value, 0),
+        [safeData]
+    )
+
+    // Sync active state if data changes and current selection is invalid
+    React.useEffect(() => {
+        if (activeName !== "All" && !safeData.find(d => d.name === activeName)) {
+            setActiveName("All")
+        }
+    }, [safeData, activeName])
+
+    const activeIndex = React.useMemo(
+        () => safeData.findIndex((item) => item.name === activeName),
+        [activeName, safeData]
+    )
+
     if (!data || data.length === 0) {
         return (
             <Card className="flex flex-col">
@@ -46,26 +68,6 @@ export function InteractivePieChart({ title, description, data, label }: Interac
             </Card>
         )
     }
-
-    // Default active item is "All" to show total first
-    const [activeName, setActiveName] = React.useState("All")
-
-    const totalValue = React.useMemo(() =>
-        data.reduce((acc, curr) => acc + curr.value, 0),
-        [data]
-    )
-
-    // Sync active state if data changes and current selection is invalid
-    React.useEffect(() => {
-        if (activeName !== "All" && !data.find(d => d.name === activeName)) {
-            setActiveName("All")
-        }
-    }, [data, activeName])
-
-    const activeIndex = React.useMemo(
-        () => data.findIndex((item) => item.name === activeName),
-        [activeName, data]
-    )
 
     const activeItem = data[activeIndex]
 

@@ -1,4 +1,4 @@
-import { supabase } from './contractService';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 // ============================================
 // Vendor Service - Vendor Evaluation Operations
@@ -22,9 +22,9 @@ export class VendorService {
     /**
      * Get all vendor evaluations for a contract
      */
-    static async getContractVendors(contractId: string): Promise<VendorEvaluation[]> {
+    static async getContractVendors(client: SupabaseClient, contractId: string): Promise<VendorEvaluation[]> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_vendors')
                 .select('*')
                 .eq('contract_id', contractId)
@@ -41,9 +41,9 @@ export class VendorService {
     /**
      * Create a new vendor evaluation
      */
-    static async createVendorEvaluation(vendorData: Omit<VendorEvaluation, 'id' | 'created_at'>): Promise<VendorEvaluation> {
+    static async createVendorEvaluation(client: SupabaseClient, vendorData: Omit<VendorEvaluation, 'id' | 'created_at'>): Promise<VendorEvaluation> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_vendors')
                 .insert([vendorData])
                 .select()
@@ -60,9 +60,9 @@ export class VendorService {
     /**
      * Update a vendor evaluation
      */
-    static async updateVendorEvaluation(id: string, updates: Partial<VendorEvaluation>): Promise<VendorEvaluation> {
+    static async updateVendorEvaluation(client: SupabaseClient, id: string, updates: Partial<VendorEvaluation>): Promise<VendorEvaluation> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_vendors')
                 .update(updates)
                 .eq('id', id)
@@ -80,9 +80,9 @@ export class VendorService {
     /**
      * Delete a vendor evaluation
      */
-    static async deleteVendorEvaluation(id: string): Promise<void> {
+    static async deleteVendorEvaluation(client: SupabaseClient, id: string): Promise<void> {
         try {
-            const { error } = await supabase
+            const { error } = await client
                 .from('contract_vendors')
                 .delete()
                 .eq('id', id);
@@ -97,17 +97,17 @@ export class VendorService {
     /**
      * Mark vendor(s) as appointed
      */
-    static async setAppointedVendors(contractId: string, vendorIds: string[]): Promise<void> {
+    static async setAppointedVendors(client: SupabaseClient, contractId: string, vendorIds: string[]): Promise<void> {
         try {
             // First, unmark all vendors for this contract
-            await supabase
+            await client
                 .from('contract_vendors')
                 .update({ is_appointed: false })
                 .eq('contract_id', contractId);
 
             // Then mark the selected vendors as appointed
             if (vendorIds.length > 0) {
-                await supabase
+                await client
                     .from('contract_vendors')
                     .update({ is_appointed: true })
                     .in('id', vendorIds);
@@ -121,9 +121,9 @@ export class VendorService {
     /**
      * Get appointed vendors for a contract
      */
-    static async getAppointedVendors(contractId: string): Promise<VendorEvaluation[]> {
+    static async getAppointedVendors(client: SupabaseClient, contractId: string): Promise<VendorEvaluation[]> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_vendors')
                 .select('*')
                 .eq('contract_id', contractId)
@@ -140,9 +140,9 @@ export class VendorService {
     /**
      * Calculate total contract amount from appointed vendors
      */
-    static async calculateTotalContractAmount(contractId: string): Promise<number> {
+    static async calculateTotalContractAmount(client: SupabaseClient, contractId: string): Promise<number> {
         try {
-            const appointedVendors = await this.getAppointedVendors(contractId);
+            const appointedVendors = await this.getAppointedVendors(client, contractId);
 
             let total = 0;
             for (const vendor of appointedVendors) {
@@ -180,10 +180,10 @@ export class VendorService {
     /**
      * Bulk update vendor evaluations
      */
-    static async bulkUpdateVendors(vendors: Array<Partial<VendorEvaluation> & { id: string }>): Promise<void> {
+    static async bulkUpdateVendors(client: SupabaseClient, vendors: Array<Partial<VendorEvaluation> & { id: string }>): Promise<void> {
         try {
             const updates = vendors.map(vendor =>
-                this.updateVendorEvaluation(vendor.id, vendor)
+                this.updateVendorEvaluation(client, vendor.id, vendor)
             );
             await Promise.all(updates);
         } catch (error) {

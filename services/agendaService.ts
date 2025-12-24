@@ -1,4 +1,4 @@
-import { supabase } from './contractService';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 // ============================================
 // Agenda Service - Bid Agenda Operations
@@ -19,9 +19,9 @@ export class AgendaService {
     /**
      * Get all agenda items for a contract
      */
-    static async getContractAgenda(contractId: string): Promise<AgendaItem[]> {
+    static async getContractAgenda(client: SupabaseClient, contractId: string): Promise<AgendaItem[]> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_bid_agenda')
                 .select('*')
                 .eq('contract_id', contractId)
@@ -38,9 +38,9 @@ export class AgendaService {
     /**
      * Create a new agenda item
      */
-    static async createAgendaItem(agendaData: Omit<AgendaItem, 'id' | 'updated_at'>): Promise<AgendaItem> {
+    static async createAgendaItem(client: SupabaseClient, agendaData: Omit<AgendaItem, 'id' | 'updated_at'>): Promise<AgendaItem> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_bid_agenda')
                 .insert([agendaData])
                 .select()
@@ -57,9 +57,9 @@ export class AgendaService {
     /**
      * Update an agenda item
      */
-    static async updateAgendaItem(id: string, updates: Partial<AgendaItem>): Promise<AgendaItem> {
+    static async updateAgendaItem(client: SupabaseClient, id: string, updates: Partial<AgendaItem>): Promise<AgendaItem> {
         try {
-            const { data, error } = await supabase
+            const { data, error } = await client
                 .from('contract_bid_agenda')
                 .update({ ...updates, updated_at: new Date().toISOString() })
                 .eq('id', id)
@@ -77,9 +77,9 @@ export class AgendaService {
     /**
      * Delete an agenda item
      */
-    static async deleteAgendaItem(id: string): Promise<void> {
+    static async deleteAgendaItem(client: SupabaseClient, id: string): Promise<void> {
         try {
-            const { error } = await supabase
+            const { error } = await client
                 .from('contract_bid_agenda')
                 .delete()
                 .eq('id', id);
@@ -94,10 +94,10 @@ export class AgendaService {
     /**
      * Bulk update agenda items
      */
-    static async bulkUpdateAgenda(items: Array<Partial<AgendaItem> & { id: string }>): Promise<void> {
+    static async bulkUpdateAgenda(client: SupabaseClient, items: Array<Partial<AgendaItem> & { id: string }>): Promise<void> {
         try {
             const updates = items.map(item =>
-                this.updateAgendaItem(item.id, item)
+                this.updateAgendaItem(client, item.id, item)
             );
             await Promise.all(updates);
         } catch (error) {
@@ -109,9 +109,9 @@ export class AgendaService {
     /**
      * Check if signature steps are completed
      */
-    static async areSignatureStepsCompleted(contractId: string): Promise<boolean> {
+    static async areSignatureStepsCompleted(client: SupabaseClient, contractId: string): Promise<boolean> {
         try {
-            const agenda = await this.getContractAgenda(contractId);
+            const agenda = await this.getContractAgenda(client, contractId);
 
             const internalSignature = agenda.find(item =>
                 item.step_name.toLowerCase().includes('internal') &&
@@ -138,9 +138,9 @@ export class AgendaService {
     /**
      * Get current step from agenda
      */
-    static async getCurrentStep(contractId: string): Promise<string | null> {
+    static async getCurrentStep(client: SupabaseClient, contractId: string): Promise<string | null> {
         try {
-            const agenda = await this.getContractAgenda(contractId);
+            const agenda = await this.getContractAgenda(client, contractId);
 
             // Find the latest completed step
             const completedSteps = agenda.filter(item => item.end_date);

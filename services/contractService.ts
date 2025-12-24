@@ -403,4 +403,48 @@ export class ContractService {
         }
         return totalSaving;
     }
+
+    /**
+     * Get Expiring Contracts
+     */
+    static async getExpiringContracts(client: SupabaseClient, days: number): Promise<Contract[]> {
+        const today = new Date();
+        const target = new Date();
+        target.setDate(today.getDate() + days);
+
+        const { data, error } = await client
+            .from('contract_versions')
+            .select(`
+                *,
+                parent:parent_id (contract_number),
+                pt:pt_id (name),
+                contract_type:contract_type_id (name)
+            `)
+            .eq('is_current', true)
+            .lte('expiry_date', target.toISOString())
+            .gte('expiry_date', today.toISOString())
+            .neq('status', 'Expired') // Optionally exclude already expired
+            .order('expiry_date', { ascending: true });
+
+        if (error) throw error;
+        return (data || []).map(row => this.transformToContract(row)!);
+    }
+
+    /**
+     * Get Contract Versions
+     */
+    static async getContractVersions(client: SupabaseClient, contractNumber: string): Promise<Contract[]> {
+        // First get parent to ensure we match by number correctly
+        const { data: parent } = await client.from('contract_parents').select('id').eq('contract_number', contractNumber).single();
+        if (!parent) return [];
+
+        const { data, error } = await client
+            .from('contract_versions')
+            .select('*')
+            .eq('parent_id', parent.id)
+            .order('version', { ascending: false });
+
+        if (error) throw error;
+        return (data || []).map(row => ({ ...row, contract_number: contractNumber }));
+    }
 }

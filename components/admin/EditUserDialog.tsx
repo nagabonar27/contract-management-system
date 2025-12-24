@@ -134,7 +134,7 @@ export default function EditUserDialog({ user, onUserUpdated }: EditUserDialogPr
                     <TabsContent value="security">
                         <form onSubmit={handleResetPassword} className="space-y-4 py-4">
                             <div className="rounded-md bg-yellow-50 p-4 text-sm text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-                                Warning: Resetting the password will invalidate the user's current session.
+                                Warning: Resetting the password will invalidate the user&apos;s current session.
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="new-password">New Password</Label>

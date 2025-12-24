@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ContractService, Contract } from '@/services/contractService';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 /**
  * Hook for fetching and managing a single contract
  */
 export function useContract(id: string | null) {
+    const supabase = createClientComponentClient();
     const [contract, setContract] = useState<Contract | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,7 @@ export function useContract(id: string | null) {
         try {
             setLoading(true);
             setError(null);
-            const data = await ContractService.getContract(id);
+            const data = await ContractService.getContract(supabase, id);
             setContract(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to fetch contract');
@@ -26,7 +28,7 @@ export function useContract(id: string | null) {
         } finally {
             setLoading(false);
         }
-    }, [id]);
+    }, [id, supabase]);
 
     useEffect(() => {
         fetchContract();
@@ -37,7 +39,7 @@ export function useContract(id: string | null) {
 
         try {
             setError(null);
-            const updated = await ContractService.updateContract(id, updates);
+            const updated = await ContractService.updateContract(supabase, id, updates);
             setContract(updated);
             return updated;
         } catch (err) {
@@ -51,7 +53,7 @@ export function useContract(id: string | null) {
 
         try {
             setError(null);
-            await ContractService.deleteContract(id);
+            await ContractService.deleteContract(supabase, id);
             setContract(null);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete contract');
@@ -72,7 +74,8 @@ export function useContract(id: string | null) {
 /**
  * Hook for fetching multiple contracts with filtering
  */
-export function useContracts(filters?: Parameters<typeof ContractService.getAllContracts>[0]) {
+export function useContracts(filters?: Parameters<typeof ContractService.getAllContracts>[1]) {
+    const supabase = createClientComponentClient();
     const [contracts, setContracts] = useState<Contract[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -81,7 +84,7 @@ export function useContracts(filters?: Parameters<typeof ContractService.getAllC
         try {
             setLoading(true);
             setError(null);
-            const data = await ContractService.getAllContracts(filters);
+            const data = await ContractService.getAllContracts(supabase, filters);
             setContracts(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to fetch contracts');
@@ -89,7 +92,7 @@ export function useContracts(filters?: Parameters<typeof ContractService.getAllC
         } finally {
             setLoading(false);
         }
-    }, [filters]);
+    }, [filters, supabase]);
 
     useEffect(() => {
         fetchContracts();
@@ -114,6 +117,7 @@ export function useActiveContracts() {
  * Hook for fetching expiring contracts
  */
 export function useExpiringContracts(daysUntilExpiry: number = 120) {
+    const supabase = createClientComponentClient();
     const [contracts, setContracts] = useState<Contract[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -122,7 +126,7 @@ export function useExpiringContracts(daysUntilExpiry: number = 120) {
         try {
             setLoading(true);
             setError(null);
-            const data = await ContractService.getExpiringContracts(daysUntilExpiry);
+            const data = await ContractService.getExpiringContracts(supabase, daysUntilExpiry);
             setContracts(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to fetch expiring contracts');
@@ -130,7 +134,7 @@ export function useExpiringContracts(daysUntilExpiry: number = 120) {
         } finally {
             setLoading(false);
         }
-    }, [daysUntilExpiry]);
+    }, [daysUntilExpiry, supabase]);
 
     useEffect(() => {
         fetchContracts();
@@ -148,6 +152,7 @@ export function useExpiringContracts(daysUntilExpiry: number = 120) {
  * Hook for creating amendments
  */
 export function useAmendment() {
+    const supabase = createClientComponentClient();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -155,7 +160,7 @@ export function useAmendment() {
         try {
             setLoading(true);
             setError(null);
-            const amendment = await ContractService.createAmendment(originalContractId);
+            const amendment = await ContractService.createAmendment(supabase, originalContractId);
             return amendment;
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create amendment');
@@ -176,6 +181,7 @@ export function useAmendment() {
  * Hook for fetching contract versions
  */
 export function useContractVersions(contractNumber: string | null) {
+    const supabase = createClientComponentClient();
     const [versions, setVersions] = useState<Contract[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -189,7 +195,7 @@ export function useContractVersions(contractNumber: string | null) {
         try {
             setLoading(true);
             setError(null);
-            const data = await ContractService.getContractVersions(contractNumber);
+            const data = await ContractService.getContractVersions(supabase, contractNumber);
             setVersions(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to fetch versions');
@@ -197,7 +203,7 @@ export function useContractVersions(contractNumber: string | null) {
         } finally {
             setLoading(false);
         }
-    }, [contractNumber]);
+    }, [contractNumber, supabase]);
 
     useEffect(() => {
         fetchVersions();

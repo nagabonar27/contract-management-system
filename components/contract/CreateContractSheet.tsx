@@ -151,7 +151,7 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
                 title: contractName,
                 pt_id: typeof finalPtId === 'number' ? finalPtId : (finalPtId ? parseInt(finalPtId as any) : undefined),
                 contract_type_id: parseInt(selectedType),
-                category: selectedCategory?.label || null,
+                category: selectedCategory?.label || undefined,
                 division: selectedDivision,
                 status: 'On Progress',
                 current_step: 'Drafting',
@@ -271,7 +271,7 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
                                             <CommandEmpty className="p-2">
                                                 <p className="text-sm text-muted-foreground mb-2">No PT found.</p>
                                                 <Button variant="secondary" size="sm" className="w-full justify-start" onClick={handleCreatePT}>
-                                                    <Plus className="mr-2 h-3 w-3" /> Create "{searchPT}"
+                                                    <Plus className="mr-2 h-3 w-3" /> Create &quot;{searchPT}&quot;
                                                 </Button>
                                             </CommandEmpty>
                                             <CommandGroup>
@@ -317,7 +317,7 @@ export default function CreateContractSheet({ open, onOpenChange, onSuccess }: C
                                         <CommandEmpty className="p-2">
                                             <p className="text-sm text-muted-foreground mb-2">No category found.</p>
                                             <Button variant="secondary" size="sm" className="w-full justify-start" onClick={handleCreateCategory}>
-                                                <Plus className="mr-2 h-3 w-3" /> Create "{searchCategory}"
+                                                <Plus className="mr-2 h-3 w-3" /> Create &quot;{searchCategory}&quot;
                                             </Button>
                                         </CommandEmpty>
                                         <CommandGroup>
