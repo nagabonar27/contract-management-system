@@ -34,11 +34,13 @@ import {
     Search
 } from "lucide-react"
 import { toast } from "sonner"
-import { formatCurrency, getDivisionColor, getColorForString } from "@/lib/contractUtils"
+import { formatCurrency, getDivisionColor, getDivisionHexColor, getColorForString } from "@/lib/contractUtils"
+
 import { format } from "date-fns"
 import CreateContractSheet from "@/components/contract/CreateContractSheet"
 import { ContractService } from "@/services/contractService"
 import { InteractivePieChart } from "@/components/charts/InteractivePieChart"
+import { ContractStatusChart } from "@/components/charts/ContractStatusChart"
 import { useAuth } from "@/context/AuthContext"
 import { canViewAllContracts } from "@/lib/adminUtils"
 import {
@@ -165,7 +167,9 @@ export function OngoingContractsTable() {
                 const parent = item.parent || {}
                 const vendors = item.contract_vendors || []
                 const appointedVendor = vendors.find((v: any) => v.is_appointed)?.vendor_name
-
+                // ... rest of map logic is unchanged, but we are inside the function ...
+                // Actually, replace_file_content needs exact context.
+                // Let's target the end of the object.
                 return {
                     id: item.id, // Version ID
                     title: item.title,
@@ -190,7 +194,8 @@ export function OngoingContractsTable() {
                     contract_bid_agenda: item.contract_bid_agenda
                 }
             })
-        }
+        },
+        refetchOnMount: 'always' // Force refresh when coming back from Detail page
     })
 
     // Filter Logic
@@ -233,7 +238,7 @@ export function OngoingContractsTable() {
         const divChartForGraph = Object.entries(divCounts).map(([name, value]) => ({
             name,
             value,
-            fill: getColorForString(name)
+            fill: getDivisionHexColor(name)
         }))
 
         setDivisionData(divChartForGraph)
@@ -303,19 +308,24 @@ export function OngoingContractsTable() {
 
             {/* Visualizations - Optional, based on state */}
             {tasks.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <InteractivePieChart
-                        title="Contracts by Division"
-                        description="Distribution across departments"
-                        data={divisionData}
-                        label="Contracts"
-                    />
-                    <InteractivePieChart
-                        title="Contracts by Category"
-                        description="Distribution by procurement category"
-                        data={statusData}
-                        label="Contracts"
-                    />
+                <div className="space-y-4">
+                    {/* Status Overview Bar Chart */}
+                    <ContractStatusChart contracts={filteredTasks} />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <InteractivePieChart
+                            title="Contracts by Division"
+                            description="Distribution across Divisions"
+                            data={divisionData}
+                            label="Contracts"
+                        />
+                        <InteractivePieChart
+                            title="Contracts by Category"
+                            description="Distribution per Categories"
+                            data={statusData}
+                            label="Contracts"
+                        />
+                    </div>
                 </div>
             )}
 
@@ -408,7 +418,7 @@ export function OngoingContractsTable() {
                                     <TableCell>
                                         <Badge variant="outline">{task.current_step}</Badge>
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                         <ContractActionsMenu
                                             contractId={task.id}
                                             type="ongoing"

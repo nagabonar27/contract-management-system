@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
 import { getContractDisplayStatus } from "@/lib/contractUtils"
+import { BID_AGENDA_STEPS } from "@/lib/constant"
 import { ContractService } from "@/services/contractService"
 import { ContractHeader } from "@/components/contract/ContractHeader"
 import { BidAgendaSection } from "@/components/contract/BidAgendaSection"
@@ -163,18 +164,7 @@ export default function ContractDetailPage() {
 
     const fetchAgenda = async () => {
         const { data } = await supabase.from('contract_bid_agenda').select('*').eq('contract_id', id)
-        if (data) {
-            // Sort by earliest start date. If null, put at end (or rely on created_at)
-            const sorted = data.sort((a, b) => {
-                if (a.start_date && b.start_date) {
-                    return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
-                }
-                if (a.start_date) return -1
-                if (b.start_date) return 1
-                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            })
-            setAgendaList(sorted)
-        }
+        return data || []
     }
 
     const fetchVendors = async () => {
@@ -186,14 +176,7 @@ export default function ContractDetailPage() {
             `)
             .eq('contract_id', id)
             .order('created_at', { ascending: true })
-        if (data) {
-            setVendorList(data)
-            // Sync appointed vendor name from the fetched list
-            const appointed = data.find((v: any) => v.is_appointed)
-            if (appointed) {
-                setAppointedVendorName(appointed.vendor_name)
-            }
-        }
+        return data || []
     }
 
     // MAIN FETCH
@@ -267,8 +250,45 @@ export default function ContractDetailPage() {
                 setIsAnticipated(mappedContract.is_anticipated || false)
 
                 // 2. Fetch Child Data (Agenda & Vendors)
-                await fetchAgenda()
-                await fetchVendors()
+                const agendaData = await fetchAgenda()
+                const vendorsData = await fetchVendors()
+
+                // Set Vendors
+                setVendorList(vendorsData)
+                const appointed = vendorsData.find((v: any) => v.is_appointed)
+                if (appointed) {
+                    setAppointedVendorName(appointed.vendor_name)
+                }
+
+                // Sort Agenda by Effective Date (Own or Vendor)
+                const sortedAgenda = agendaData.sort((a: any, b: any) => {
+                    const getEffectiveDate = (item: any) => {
+                        if (item.start_date) return new Date(item.start_date).getTime()
+
+                        // Look for vendor dates
+                        const relatedDates = vendorsData
+                            .flatMap((v: any) => v.step_dates || [])
+                            .filter((sd: any) => sd.agenda_step_id === item.id && sd.start_date)
+
+                        if (relatedDates.length > 0) {
+                            // Earliest start date among vendors for this step
+                            const timestamps = relatedDates.map((rd: any) => new Date(rd.start_date).getTime())
+                            return Math.min(...timestamps)
+                        }
+                        return 0
+                    }
+
+                    const dateA = getEffectiveDate(a)
+                    const dateB = getEffectiveDate(b)
+
+                    if (dateA > 0 && dateB > 0) return dateA - dateB
+                    if (dateA > 0) return -1 // A has date, B doesn't -> A first
+                    if (dateB > 0) return 1  // B has date, A doesn't -> B first
+
+                    // Fallback to Created At
+                    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                })
+                setAgendaList(sortedAgenda)
 
                 // 3. Fetch Options (Fixed Mapping: Value = ID)
                 const { data: ptData } = await supabase.from('pt').select('id, name')
@@ -480,6 +500,69 @@ export default function ContractDetailPage() {
         }
     }
 
+    // Helper: Determine Current Step from Agenda Statuses
+    const determineCurrentStep = (items: AgendaItem[], vendors: ContractVendor[]): string => {
+        // 1. Priority: Explicitly 'On Progress'
+        const onProgress = items.find(i => i.status === 'On Progress')
+        if (onProgress) return onProgress.step_name
+
+        // 2. Priority: Latest Active Step by Date (Including Vendor Dates)
+        // Find all steps that are NOT Completed and have a Start Date (either own or from vendor)
+        const activeWithDates = items.filter(i =>
+            i.status !== 'Completed' &&
+            i.status !== 'Finished'
+        ).map(item => {
+            // Check own date
+            let latestDate = item.start_date ? new Date(item.start_date).getTime() : 0
+
+            // Check vendor dates for this step
+            if (vendors && vendors.length > 0) {
+                vendors.forEach(v => {
+                    const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
+                    if (stepDate?.start_date) {
+                        const vTime = new Date(stepDate.start_date).getTime()
+                        if (vTime > latestDate) latestDate = vTime
+                    }
+                })
+            }
+
+            return {
+                ...item,
+                effectiveDate: latestDate
+            }
+        }).filter(item => item.effectiveDate > 0)
+
+        if (activeWithDates.length > 0) {
+            // Sort by Date Descending (Latest first)
+            activeWithDates.sort((a, b) => b.effectiveDate - a.effectiveDate)
+            return activeWithDates[0].step_name
+        }
+
+        // 3. Fallback: First 'Pending' step based on Canonical Order
+        // Sort by canonical order
+        const sorted = [...items].sort((a, b) => {
+            const indexA = BID_AGENDA_STEPS.indexOf(a.step_name as any)
+            const indexB = BID_AGENDA_STEPS.indexOf(b.step_name as any)
+            const valA = indexA === -1 ? 999 : indexA
+            const valB = indexB === -1 ? 999 : indexB
+            return valA - valB
+        })
+
+        for (const item of sorted) {
+            if (item.status === 'Pending') return item.step_name
+        }
+
+        // 4. All Completed?
+        if (sorted.length > 0 && sorted.every(s => s.status === 'Completed')) {
+            return "Contract Completed"
+        }
+
+        // 5. Absolute Default
+        if (sorted.length > 0) return sorted[0].step_name
+
+        return "Initiated"
+    }
+
     // 7. Save All (Agenda + Vendors)
     const handleSaveAll = async () => {
         setIsSavingAgenda(true)
@@ -490,6 +573,8 @@ export default function ContractDetailPage() {
 
         try {
             // A. Save Agenda Items
+            const savedAgendaList: AgendaItem[] = [] // Track latest state for step calc
+
             for (const item of agendaList) {
                 const isTemp = item.id.startsWith('temp-')
                 const originalId = item.id
@@ -503,12 +588,15 @@ export default function ContractDetailPage() {
                     remarks: item.remarks || null,
                 }
 
+                let savedItem = { ...item }
+
                 if (isTemp) {
                     const { data, error } = await supabase.from('contract_bid_agenda').insert(payload).select().single()
                     if (!error && data) {
                         stepIdMap[originalId] = data.id
                         // Update local object to prevent re-insert if we save again without reload
                         item.id = data.id
+                        savedItem = { ...item, ...data } // Ensure we have the latest
                     } else if (error) {
                         throw error
                     }
@@ -516,9 +604,29 @@ export default function ContractDetailPage() {
                     const { error } = await supabase.from('contract_bid_agenda').update(payload).eq('id', item.id)
                     if (error) throw error
                 }
+                savedAgendaList.push(savedItem)
             }
 
             // B. Save Vendors
+            // We need to track the latest vendor list state for calculation too
+            // Ideally we should construct the full object but for calculation purposes we mostly need step_dates
+            // Since step_dates logic below modifies the DB but not the local `vendorList` object explicitly in a way that matches `savedAgendaList` structure perfectly immediately unless we are careful.
+            // Actually, `vendorList` in state is updated via `setVendorList` reference but we need the *latest* data including new attributes.
+            // However, `determineCurrentStep` relies on `vendorList` state or the inputs.
+            // Let's rely on the current `vendorList` state (which has user edits) PLUS any ID updates we made.
+            // BUT, `vendorList` in loop B is just loop variable.
+
+            // To render the correct state for `determineCurrentStep`, we should probably just use `vendorList` (the state) 
+            // because `determineCurrentStep` needs to know the DATES, which come from the user input in `vendorList` state.
+            // The updates to DB just confirm them.
+
+            // Wait, we need to map temp step IDs to real IDs in vendor list if we want to be 100% correct, 
+            // but for `determineCurrentStep` matching `agendaItem.id`, we need consistent IDs.
+            // If `savedAgendaList` has real IDs, and `vendorList` has temp IDs for steps, they won't match in `determineCurrentStep`.
+            // We need to fix this linkage for the calculation.
+
+            const savedVendorList: ContractVendor[] = []
+
             // Filter vendors that are linked to finding steps
             for (const v of vendorList) {
                 const isTemp = v.id.startsWith('temp-')
@@ -528,6 +636,9 @@ export default function ContractDetailPage() {
                 const resolvedStepId = (v.agenda_step_id && v.agenda_step_id.startsWith('temp-'))
                     ? stepIdMap[v.agenda_step_id] || v.agenda_step_id // Use mapped or original (if somehow failed/not found)
                     : v.agenda_step_id
+
+                // Update local obj for consistency
+                const currentV = { ...v, agenda_step_id: resolvedStepId }
 
                 // If resolvedStepId is still a temp ID (mapping failed), skip or error?
                 // It will fail DB constraint, caught by catch block.
@@ -551,6 +662,7 @@ export default function ContractDetailPage() {
                     if (!error && data) {
                         vendorIdMap[originalVendorId] = data.id
                         v.id = data.id
+                        currentV.id = data.id
                     } else if (error) {
                         throw error
                     }
@@ -560,6 +672,7 @@ export default function ContractDetailPage() {
                 }
 
                 // C. Save Vendor Step Dates
+                const savedStepDates = []
                 if (v.step_dates) {
                     for (const sd of v.step_dates) {
                         // Resolve Vendor ID (Use mapped ID if the vendor was just created)
@@ -579,6 +692,9 @@ export default function ContractDetailPage() {
                             remarks: sd.remarks
                         }
 
+                        // We strictly need to link this back for `determineCurrentStep` to work with real IDs
+                        savedStepDates.push({ ...sd, agenda_step_id: resolvedStepIdForDate })
+
                         if (sd.id.startsWith('temp-')) {
                             // We don't really need to track step date IDs for dependencies
                             await supabase.from('vendor_step_dates').insert(sdPayload)
@@ -587,12 +703,18 @@ export default function ContractDetailPage() {
                         }
                     }
                 }
+                currentV.step_dates = savedStepDates // Use updated IDs
+                savedVendorList.push(currentV)
             }
 
-            // D. DEPRECATED: We rely on contract_vendors.is_appointed now
-            // if (appointedVendorName !== contract?.appointed_vendor) {
-            //     await supabase.from('contract_versions').update({ appointed_vendor: appointedVendorName }).eq('id', id)
-            // }
+            // D. UPDATE CURRENT STEP ON CONTRACT
+            // Re-calculate based on the just-saved agenda list AND saved vendor list (with corrected IDs)
+            const newCurrentStep = determineCurrentStep(savedAgendaList, savedVendorList)
+            if (newCurrentStep !== contract?.current_step) {
+                await ContractService.updateContract(supabase, id, { current_step: newCurrentStep })
+                // Optimistic update of contract state
+                setContract(prev => prev ? { ...prev, current_step: newCurrentStep } : null)
+            }
 
             toast.success("All changes saved")
             setIsEditingAgenda(false)

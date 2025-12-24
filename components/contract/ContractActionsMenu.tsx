@@ -104,7 +104,11 @@ export function ContractActionsMenu({
                             <>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                    onClick={handleDeleteClick}
+                                    onSelect={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation() // Standard verification
+                                        setIsDeleteDialogOpen(true)
+                                    }}
                                     className="text-red-600 focus:text-red-600"
                                 >
                                     <Trash2 className="mr-2 h-4 w-4" />

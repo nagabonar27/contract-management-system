@@ -174,6 +174,37 @@ export function getColorForString(str: string | null): string {
 }
 
 /**
+ * Get hex color for division chart (matches badge colors)
+ * @param div - Division abbreviation
+ * @returns Hex color string
+ */
+export const getDivisionHexColor = (div: string | null) => {
+    if (!div) return '#94a3b8' // Slate 400
+
+    const normalized = div.toUpperCase().trim()
+
+    // Map matches getDivisionColor hues but uses CHART_COLORS (approx 600 weight)
+    const colorMap: Record<string, string> = {
+        'TECH': '#2563eb', // Blue
+        'HRGA': '#db2777', // Pink
+        'FIN': '#059669',  // Emerald
+        'LGL': '#9333ea',  // Purple
+        'PROC': '#ea580c', // Orange
+        'OPS': '#0891b2',  // Cyan
+        'EXT': '#65a30d',  // Lime
+        'PLNT': '#d97706', // Amber
+        'MGMT': '#4f46e5'  // Indigo
+    }
+
+    if (colorMap[normalized]) {
+        return colorMap[normalized]
+    }
+
+    // Fallback: Use existing hash logic
+    return getColorForString(div)
+}
+
+/**
  * Get color class for division badge
  * @param div - Division abbreviation
  * @returns Tailwind CSS class string
