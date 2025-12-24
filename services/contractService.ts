@@ -229,10 +229,15 @@ export class ContractService {
             const { data: current } = await client.from('contract_versions').select('*').eq('id', id).single();
             if (!current) throw new Error("Contract not found");
 
-            const { contract_number, ...versionUpdates } = updates;
+            const { contract_number, created_by, parent_created_at, ...versionUpdates } = updates;
 
-            if (contract_number) {
-                await client.from('contract_parents').update({ contract_number }).eq('id', current.parent_id);
+            if (contract_number || created_by || parent_created_at) {
+                const parentUpdates: any = {};
+                if (contract_number) parentUpdates.contract_number = contract_number;
+                if (created_by) parentUpdates.created_by = created_by;
+                if (parent_created_at) parentUpdates.created_at = parent_created_at;
+
+                await client.from('contract_parents').update(parentUpdates).eq('id', current.parent_id);
             }
 
             const safeUpdates: any = {};

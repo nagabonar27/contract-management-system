@@ -9,6 +9,8 @@ import { FilePenLine, FileCheck } from "lucide-react"
 import { getDivisionColor } from "@/lib/contractUtils"
 import { ContractBadges } from "@/components/contract/ContractBadges"
 import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
+import { DatePicker } from "@/components/DatePicker"
+import { format, parseISO } from "date-fns"
 
 interface ContractHeaderProps {
     contract: {
@@ -31,6 +33,7 @@ interface ContractHeaderProps {
         vendor_3?: string | null
         appointed_vendor?: string | null
         createdBy?: string | null
+        created_at?: string | null
     } | null
     displayStatus: string
     isActive: boolean
@@ -46,8 +49,11 @@ interface ContractHeaderProps {
         effective_date: string
         expiry_date: string
         created_by?: string
+        created_at?: string
     }
     categoryOptions: Option[]
+
+
     ptOptions: Option[]
     typeOptions: Option[]
     userOptions?: Option[]
@@ -134,9 +140,13 @@ export function ContractHeader({
                                 Contract #: {contract.contract_number}
                             </div>
                         )}
-                        {contract?.expiry_date && (
+                        {contract?.created_at && (
                             <div>
-                                Expires: {contract.expiry_date}
+                                Created: {new Date(contract.created_at).toLocaleDateString('en-GB', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                })}
                             </div>
                         )}
                     </div>
@@ -258,33 +268,6 @@ export function ContractHeader({
                                 onSelect={val => onFormChange({ division: val })}
                             />
                         </div>
-                        {(userPosition === 'admin' || userPosition === 'Data & System Analyst') && (
-                            <div className="grid gap-2">
-                                <Label>Created By (Admin Override)</Label>
-                                <Combobox
-                                    options={userOptions}
-                                    value={userOptions.find(u => u.value === editForm.created_by)?.label || editForm.created_by || ""}
-                                    onSelect={val => {
-                                        // val is the label from Combobox, we need the value (ID)
-                                        // Actually Combobox onSelect returns the value if we set it, or label?
-                                        // Checking shared/combobox usage. Usually it returns the value passed in options.
-                                        // But here options: { label: name, value: id }.
-                                        // Wait, Combobox implementation varies.
-                                        // In standard shadcn combobox: value is the value.
-                                        // Let's assume onSelect returns the 'value'.
-                                        // But wait, look at typeOptions usage:
-                                        // onSelect={val => onFormChange({ contract_type_name: val })}
-                                        // typeOptions = { label: name, value: name } in page.tsx!
-                                        // Ah, in page.tsx: typeOptions.map(t => ({ label: t.name, value: t.name })) !!
-                                        // So existing code passes NAME as value.
-                                        // For User, I want ID.
-                                        // So userOptions should be { label: Name, value: ID }.
-                                        // If I select, I get ID.
-                                        onFormChange({ created_by: val })
-                                    }}
-                                />
-                            </div>
-                        )}
                         <div className="grid gap-2">
                             <Label>Department</Label>
                             <Input
@@ -306,18 +289,18 @@ export function ContractHeader({
                             <>
                                 <div className="grid gap-2">
                                     <Label>Effective Date</Label>
-                                    <Input
-                                        type="date"
-                                        value={editForm.effective_date}
-                                        onChange={e => onFormChange({ effective_date: e.target.value })}
+                                    <DatePicker
+                                        value={editForm.effective_date ? parseISO(editForm.effective_date) : undefined}
+                                        onChange={(date) => onFormChange({ effective_date: date ? format(date, 'yyyy-MM-dd') : "" })}
+                                        className="w-full"
                                     />
                                 </div>
                                 <div className="grid gap-2">
                                     <Label>Expiry Date</Label>
-                                    <Input
-                                        type="date"
-                                        value={editForm.expiry_date}
-                                        onChange={e => onFormChange({ expiry_date: e.target.value })}
+                                    <DatePicker
+                                        value={editForm.expiry_date ? parseISO(editForm.expiry_date) : undefined}
+                                        onChange={(date) => onFormChange({ expiry_date: date ? format(date, 'yyyy-MM-dd') : "" })}
+                                        className="w-full"
                                     />
                                 </div>
                             </>
@@ -355,6 +338,33 @@ export function ContractHeader({
                                         />
                                         <span className="text-sm">Anticipated</span>
                                     </label>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Admin Access Section */}
+                        {(userPosition === 'admin' || userPosition === 'Data & System Analyst') && (
+                            <div className="md:col-span-2 border-t pt-4 mt-2">
+                                <h4 className="text-sm font-medium mb-4 text-gray-900 flex items-center gap-2">
+                                    <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs">Admin Access</span>
+                                </h4>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="grid gap-2">
+                                        <Label>Created By (Override)</Label>
+                                        <Combobox
+                                            options={userOptions}
+                                            value={userOptions.find(u => u.value === editForm.created_by)?.label || editForm.created_by || ""}
+                                            onSelect={val => onFormChange({ created_by: val })}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label>Contract Created Date</Label>
+                                        <DatePicker
+                                            value={editForm.created_at ? parseISO(editForm.created_at) : undefined}
+                                            onChange={(date) => onFormChange({ created_at: date ? format(date, 'yyyy-MM-dd') : "" })}
+                                            className="w-full"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         )}

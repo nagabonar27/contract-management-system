@@ -24,6 +24,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ContractActionsMenu } from "@/components/contract/ContractActionsMenu"
 import {
     MoreVertical,
     Eye,
@@ -38,6 +39,8 @@ import { format } from "date-fns"
 import CreateContractSheet from "@/components/contract/CreateContractSheet"
 import { ContractService } from "@/services/contractService"
 import { InteractivePieChart } from "@/components/charts/InteractivePieChart"
+import { useAuth } from "@/context/AuthContext"
+import { canViewAllContracts } from "@/lib/adminUtils"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -69,6 +72,7 @@ interface ContractTable {
     title: string
     contract_number: string
     start_date: string // created_at
+    created_by_id?: string
     status: string
     contract_value: number
     cost_savings: number
@@ -97,6 +101,7 @@ interface ContractTable {
 export function OngoingContractsTable() {
     const router = useRouter()
     const supabase = createClientComponentClient()
+    const { user, profile } = useAuth()
 
     // State
     // Tasks managed by Query
@@ -141,6 +146,7 @@ export function OngoingContractsTable() {
                     parent:parent_id (
                         contract_number,
                         created_at,
+                        created_by,
                         profiles:created_by (full_name)
                     ),
                     contract_types (name),
@@ -180,6 +186,7 @@ export function OngoingContractsTable() {
                     is_anticipated: item.is_anticipated || false,
                     parent_contract_id: item.parent_id,
                     user_name: parent.profiles?.full_name,
+                    created_by_id: parent.created_by,
                     contract_bid_agenda: item.contract_bid_agenda
                 }
             })
@@ -188,26 +195,38 @@ export function OngoingContractsTable() {
 
     // Filter Logic
     useEffect(() => {
-        if (!searchTerm) {
-            setFilteredTasks(tasks)
-        } else {
+        let filtered = tasks
+
+        // Role-Based Visibility Check
+        if (!canViewAllContracts(profile?.position)) {
+            // Only show contracts created by self
+            filtered = filtered.filter(t => t.created_by_id === user?.id)
+        }
+
+        if (searchTerm) {
             const lower = searchTerm.toLowerCase()
-            setFilteredTasks(tasks.filter(t =>
+            filtered = filtered.filter(t =>
                 t.title?.toLowerCase().includes(lower) ||
                 t.contract_number?.toLowerCase().includes(lower) ||
                 t.appointed_vendor?.toLowerCase().includes(lower) ||
                 t.user_name?.toLowerCase().includes(lower)
-            ))
+            )
         }
-    }, [searchTerm, tasks])
 
-    // Update charts when tasks change
+        setFilteredTasks(filtered)
+    }, [searchTerm, tasks, profile, user])
+
+    // Update charts when filteredTasks change (Data source: Filtered Tasks)
     useEffect(() => {
-        if (!tasks.length) return
+        if (filteredTasks.length === 0) {
+            setDivisionData([])
+            setStatusData([])
+            return
+        }
 
         // Division Data
         const divCounts: Record<string, number> = {}
-        tasks.forEach(t => {
+        filteredTasks.forEach(t => {
             const d = t.division || "Unknown"
             divCounts[d] = (divCounts[d] || 0) + 1
         })
@@ -222,7 +241,7 @@ export function OngoingContractsTable() {
         // Status Data (or Type?)
         // Let's do Category.
         const catCounts: Record<string, number> = {}
-        tasks.forEach(t => {
+        filteredTasks.forEach(t => {
             const c = t.category || "General"
             catCounts[c] = (catCounts[c] || 0) + 1
         })
@@ -232,8 +251,8 @@ export function OngoingContractsTable() {
             fill: PALETTE_COLORS[i % PALETTE_COLORS.length]
         }))
         setStatusData(catChart)
+    }, [filteredTasks])
 
-    }, [tasks])
 
     const handleDeleteClick = (id: string) => {
         setDeleteId(id)
@@ -244,21 +263,11 @@ export function OngoingContractsTable() {
         if (!deleteId) return
 
         try {
-            // UPDATE: Use Service to handle cleanup (parent text, etc.)
             await ContractService.deleteContract(supabase, deleteId)
-
             toast.success("Contract deleted successfully")
-
-            // REACT QUERY: Invalidate to refetch
             refetch()
-
-            // Filter update handled by useEffect reacting to tasks change (which happens after refetch)
-
         } catch (error: any) {
             toast.error("Failed to delete contract", { description: error.message })
-        } finally {
-            setIsDeleteDialogOpen(false)
-            setDeleteId(null)
         }
     }
 
@@ -388,8 +397,8 @@ export function OngoingContractsTable() {
                                     <TableCell>
                                         {task.contract_type_name?.replace("Amendment", "") || "-"}
                                     </TableCell>
-                                    <TableCell>
-                                        <div className="flex flex-col gap-1">
+                                    <TableCell className="align-middle">
+                                        <div className="flex flex-col items-start leading-tight">
                                             <ContractStatusBadge status={task.status} />
                                             <span className="text-xs text-muted-foreground">
                                                 Start: {task.start_date ? format(new Date(task.start_date), 'dd MMM yyyy') : '-'}
@@ -400,31 +409,15 @@ export function OngoingContractsTable() {
                                         <Badge variant="outline">{task.current_step}</Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <div onClick={(e) => e.stopPropagation()}>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                                        <span className="sr-only">Open menu</span>
-                                                        <MoreVertical className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                    <DropdownMenuItem onClick={() => router.push(`/bid-agenda/${task.id}`)}>
-                                                        <Eye className="mr-2 h-4 w-4" />
-                                                        Open Bid Agenda
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleDeleteClick(task.id)}
-                                                        className="text-red-600 focus:text-red-600"
-                                                    >
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Delete
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
+                                        <ContractActionsMenu
+                                            contractId={task.id}
+                                            type="ongoing"
+                                            canDelete={true}
+                                            onDelete={async () => {
+                                                setDeleteId(task.id)
+                                                await confirmDelete()
+                                            }}
+                                        />
                                     </TableCell>
                                 </TableRow>
                             ))
@@ -432,21 +425,6 @@ export function OngoingContractsTable() {
                     </TableBody>
                 </Table>
             </div>
-
-            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete the contract and all associated data.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div >
     )
 }

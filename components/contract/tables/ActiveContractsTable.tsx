@@ -18,6 +18,10 @@ import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
+import { ContractActionsMenu } from "@/components/contract/ContractActionsMenu"
+import { useAuth } from "@/context/AuthContext"
+import { isAdmin } from "@/lib/adminUtils"
+import { ContractService } from "@/services/contractService"
 
 // ... imports
 
@@ -57,6 +61,7 @@ export function ActiveContractsTable() {
     // const [contracts, setContracts] = useState<ActiveContract[]>([]) // Removed
     const [filteredContracts, setFilteredContracts] = useState<ActiveContract[]>([])
     // const [loading, setLoading] = useState(true) // Removed
+    const { profile } = useAuth()
     const [activeFilter, setActiveFilter] = useState("all")
     const [searchTerm, setSearchTerm] = useState("")
     const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set())
@@ -287,6 +292,16 @@ export function ActiveContractsTable() {
         setIsFinishModalOpen(false)
     }
 
+    const handleDelete = async (id: string) => {
+        try {
+            await ContractService.deleteContract(supabase, id)
+            toast.success("Contract deleted successfully")
+            refetch()
+        } catch (error: any) {
+            toast.error("Failed to delete contract", { description: error.message })
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -444,31 +459,17 @@ export function ActiveContractsTable() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                                <MoreVertical className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onClick={() => router.push(`/bid-agenda/${contract.id}`)}>
-                                                                <Eye className="mr-2 h-4 w-4" />
-                                                                Open Bid Agenda
-                                                            </DropdownMenuItem>
-                                                            {!contractsWithAmendment.has(contract.id) && (
-                                                                <>
-                                                                    <DropdownMenuItem onClick={() => handleAmendClick(contract)}>
-                                                                        <FileEdit className="mr-2 h-4 w-4" />
-                                                                        Amend
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => handleFinishClick(contract)}>
-                                                                        <FileEdit className="mr-2 h-4 w-4" />
-                                                                        Finish
-                                                                    </DropdownMenuItem>
-                                                                </>
-                                                            )}
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                                    <ContractActionsMenu
+                                                        contractId={contract.id}
+                                                        type="active"
+                                                        canDelete={isAdmin(profile?.position)}
+                                                        isAmendDisabled={contractsWithAmendment.has(contract.id)}
+                                                        onAmend={() => handleAmendClick(contract)}
+                                                        onFinish={() => handleFinishClick(contract)}
+                                                        onDelete={async () => {
+                                                            await handleDelete(contract.id)
+                                                        }}
+                                                    />
                                                 </TableCell>
                                             </TableRow>
                                         )

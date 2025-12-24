@@ -151,32 +151,38 @@ export function GanttChart({ agendaItems, vendorItems = [] }: GanttChartProps) {
     const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))
 
     return (
-        <Card>
-            <CardHeader>
+        <Card className="shadow-lg border-0 animate-fade-in">
+            <CardHeader className="space-y-1 pb-4">
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle className="text-lg">Project Timeline</CardTitle>
-                        <p className="text-sm text-muted-foreground">
-                            {format(minDate, 'MMM dd, yyyy')} - {format(maxDate, 'MMM dd, yyyy')}
-                            ({totalDays} days)
+                        <div className="flex items-center gap-3 mb-1">
+                            <div className="p-2 bg-primary/10 rounded-lg">
+                                <ZoomIn className="h-5 w-5 text-primary" />
+                            </div>
+                            <CardTitle className="text-xl font-bold">Project Timeline</CardTitle>
+                        </div>
+                        <p className="text-sm text-muted-foreground ml-12">
+                            {format(minDate, 'MMM dd, yyyy')} - {format(maxDate, 'MMM dd, yyyy')} • {totalDays} days duration
                         </p>
                     </div>
                     {/* Zoom Controls */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-secondary/30 p-1 rounded-lg border border-secondary">
                         <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
+                            className="h-8 w-8 hover:bg-white/50"
                             onClick={handleZoomOut}
                             disabled={zoom <= 50}
                         >
                             <ZoomOut className="h-4 w-4" />
                         </Button>
-                        <span className="text-sm text-muted-foreground min-w-[60px] text-center">
+                        <span className="text-xs font-medium text-muted-foreground min-w-[40px] text-center">
                             {zoom}%
                         </span>
                         <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
+                            className="h-8 w-8 hover:bg-white/50"
                             onClick={handleZoomIn}
                             disabled={zoom >= 200}
                         >
@@ -187,20 +193,20 @@ export function GanttChart({ agendaItems, vendorItems = [] }: GanttChartProps) {
             </CardHeader>
             <CardContent>
                 {/* Scrollable Timeline Container */}
-                <div className="overflow-x-auto">
-                    <div className="space-y-2">
+                <div className="overflow-x-auto pb-4">
+                    <div className="space-y-4 min-w-[800px]">
                         {/* Header Row */}
-                        <div className="flex items-center gap-4 pb-2 border-b">
-                            <div className="w-48 text-xs font-semibold text-muted-foreground shrink-0">Step / Vendor</div>
-                            <div className="flex-1 text-xs font-semibold text-muted-foreground max-w-[600px]">Timeline</div>
-                            <div className="w-32 text-xs font-semibold text-muted-foreground shrink-0">Duration</div>
-                            <div className="w-24 text-xs font-semibold text-muted-foreground shrink-0">Status</div>
+                        <div className="flex items-center gap-6 pb-2 border-b">
+                            <div className="w-56 text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-2">Step / Vendor</div>
+                            <div className="flex-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Timeline</div>
+                            <div className="w-32 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</div>
+                            <div className="w-24 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</div>
                         </div>
 
                         {/* Month/Date Header Row */}
-                        <div className="flex items-center gap-4">
-                            <div className="w-48 shrink-0"></div>
-                            <div className="flex-1 h-6 relative border-b max-w-[600px]">
+                        <div className="flex items-center gap-6 relative">
+                            <div className="w-56 shrink-0"></div>
+                            <div className="flex-1 h-8 relative border-b border-dashed border-gray-200">
                                 {/* Generate month markers */}
                                 {(() => {
                                     const months: { label: string; leftPercent: number }[] = []
@@ -225,10 +231,11 @@ export function GanttChart({ agendaItems, vendorItems = [] }: GanttChartProps) {
                                     return months.map((month, idx) => (
                                         <div
                                             key={idx}
-                                            className="absolute text-xs text-muted-foreground"
+                                            className="absolute text-xs font-medium text-gray-500 transform -translate-x-1/2 flex flex-col items-center"
                                             style={{ left: `${month.leftPercent}%` }}
                                         >
-                                            {month.label}
+                                            <span className="mb-1">{month.label}</span>
+                                            <div className="h-2 w-px bg-gray-300"></div>
                                         </div>
                                     ))
                                 })()}
@@ -238,67 +245,87 @@ export function GanttChart({ agendaItems, vendorItems = [] }: GanttChartProps) {
                         </div>
 
                         {/* Timeline Rows */}
-                        {timelineItems.map(item => {
-                            const start = parseISO(item.start_date)
-                            const end = parseISO(item.end_date)
-                            const daysFromStart = differenceInDays(start, minDate)
-                            const duration = differenceInDays(end, start) + 1
+                        <div className="space-y-3">
+                            {timelineItems.map((item, idx) => {
+                                const start = parseISO(item.start_date)
+                                const end = parseISO(item.end_date)
+                                const daysFromStart = differenceInDays(start, minDate)
+                                const duration = differenceInDays(end, start) + 1
 
-                            const leftPercent = (daysFromStart / totalDays) * 100
-                            const widthPercent = (duration / totalDays) * 100
+                                const leftPercent = (daysFromStart / totalDays) * 100
+                                const widthPercent = (duration / totalDays) * 100
 
-                            const isVendor = item.type === 'vendor'
+                                const isVendor = item.type === 'vendor'
 
-                            return (
-                                <div key={item.id} className="flex items-center gap-4">
-                                    {/* Step/Vendor Name */}
-                                    <div className={`w-48 text-sm shrink-0 ${isVendor ? 'font-medium' : 'font-semibold text-primary'
-                                        }`} title={item.name}>
-                                        {item.name}
+                                return (
+                                    <div
+                                        key={item.id}
+                                        className={`group flex items-center gap-6 hover:bg-muted/30 p-2 rounded-lg transition-colors duration-200 animate-slide-in-right`}
+                                        style={{ animationDelay: `${idx * 50}ms` }}
+                                    >
+                                        {/* Step/Vendor Name */}
+                                        <div className="w-56 shrink-0 flex items-center gap-2">
+                                            {isVendor ? (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 ml-2"></div>
+                                            ) : (
+                                                <div className="w-2 h-2 rounded-full bg-primary/70"></div>
+                                            )}
+                                            <div className={`text-sm truncate ${isVendor ? 'text-muted-foreground pl-1 font-normal' : 'font-medium text-foreground'
+                                                }`} title={item.name}>
+                                                {isVendor ? item.name.split(':')[1]?.trim() || item.name : item.name}
+                                            </div>
+                                        </div>
+
+                                        {/* Timeline Bar Container */}
+                                        <div className="flex-1 h-6 relative bg-secondary/20 rounded-full">
+                                            {/* Bar */}
+                                            <div
+                                                className={`absolute top-1 bottom-1 rounded-full ${getStatusColor(item)} shadow-sm transition-all duration-300 group-hover:brightness-95 group-hover:scale-y-110`}
+                                                style={{
+                                                    left: `${Math.max(0, leftPercent)}%`,
+                                                    width: `${Math.min(100, widthPercent)}%`,
+                                                    minWidth: '4px'
+                                                }}
+                                            >
+                                                {/* Tooltip on hover */}
+                                                <div className="opacity-0 group-hover:opacity-100 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-md whitespace-nowrap z-10 pointer-events-none transition-opacity">
+                                                    {format(start, 'MMM dd')} - {format(end, 'MMM dd')}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Duration */}
+                                        <div className="w-32 text-xs shrink-0 flex flex-col justify-center">
+                                            <span className="font-medium text-gray-700">{duration} days</span>
+                                            <span className="text-[10px] text-muted-foreground">{format(start, 'MMM dd')} - {format(end, 'MMM dd')}</span>
+                                        </div>
+
+                                        {/* Status */}
+                                        <div className="w-24 shrink-0">
+                                            {getStatusBadge(item)}
+                                        </div>
                                     </div>
-
-                                    {/* Timeline Bar - with max-w to prevent overflow */}
-                                    <div className="flex-1 h-8 bg-gray-100 rounded relative max-w-[600px]">
-                                        <div
-                                            className={`absolute h-full rounded ${getStatusColor(item)} transition-all hover:opacity-80`}
-                                            style={{
-                                                left: `${leftPercent}%`,
-                                                width: `${widthPercent}%`,
-                                                minWidth: '2px'
-                                            }}
-                                            title={`${item.name}: ${format(start, 'MMM dd')} - ${format(end, 'MMM dd')}`}
-                                        />
-                                    </div>
-
-                                    {/* Duration */}
-                                    <div className="w-32 text-xs text-gray-600 shrink-0">
-                                        {format(start, 'MMM dd')} - {format(end, 'MMM dd')}
-                                        <div className="text-xs text-muted-foreground">{duration} days</div>
-                                    </div>
-
-                                    {/* Status */}
-                                    <div className="w-24 shrink-0">
-                                        {getStatusBadge(item)}
-                                    </div>
-                                </div>
-                            )
-                        })}
+                                )
+                            })}
+                        </div>
                     </div>
                 </div>
 
                 {/* Legend */}
-                <div className="mt-6 pt-4 border-t flex items-center gap-6 text-xs">
-                    <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-green-500 rounded"></div>
-                        <span>Completed</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                        <span>In Progress</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-gray-400 rounded"></div>
-                        <span>Not Started</span>
+                <div className="mt-8 flex justify-center">
+                    <div className="bg-secondary/20 px-4 py-2 rounded-full flex items-center gap-6 text-xs font-medium border border-secondary/50">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-green-500 rounded-full shadow-sm"></div>
+                            <span>Completed</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
+                            <span>In Progress</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-gray-400 rounded-full shadow-sm"></div>
+                            <span>Pending</span>
+                        </div>
                     </div>
                 </div>
             </CardContent>

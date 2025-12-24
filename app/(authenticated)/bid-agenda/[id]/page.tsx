@@ -42,6 +42,7 @@ type ContractData = {
     is_anticipated: boolean | null
     appointed_vendor: string | null
     created_by: string | null
+    created_at: string | null
 }
 
 
@@ -111,7 +112,8 @@ export default function ContractDetailPage() {
         contract_type_name: "",
         effective_date: "",
         expiry_date: "",
-        created_by: ""
+        created_by: "",
+        created_at: ""
     })
 
     // Status checkboxes state
@@ -231,7 +233,8 @@ export default function ContractDetailPage() {
                     is_on_hold: contractData.is_on_hold || false,
                     is_anticipated: contractData.is_anticipated || false,
                     appointed_vendor: contractData.appointed_vendor || null,
-                    created_by: contractData.created_by || null
+                    created_by: contractData.created_by || null,
+                    created_at: contractData.parent_created_at || null
                 }
 
                 setContract(mappedContract)
@@ -254,7 +257,8 @@ export default function ContractDetailPage() {
                     contract_type_name: mappedContract.contract_types?.name || "",
                     effective_date: mappedContract.effective_date || "",
                     expiry_date: mappedContract.expiry_date || "",
-                    created_by: mappedContract.created_by || ""
+                    created_by: mappedContract.created_by || "",
+                    created_at: mappedContract.created_at ? new Date(mappedContract.created_at).toISOString().split('T')[0] : ""
                 })
 
                 // Status Flags
@@ -318,6 +322,8 @@ export default function ContractDetailPage() {
                 is_cr: isCR,
                 is_on_hold: isOnHold,
                 is_anticipated: isAnticipated,
+                created_by: editForm.created_by,
+                parent_created_at: editForm.created_at,
             }
 
             // Resolve IDs from Names or IDs in editForm
@@ -703,7 +709,7 @@ export default function ContractDetailPage() {
                         hasAmendmentInProgress={hasAmendmentInProgress}
                     />
 
-                    {/* BID AGENDA SECTION (Props Aligned) */}
+                    {/* BID AGENDA SECTION */}
                     <BidAgendaSection
                         agendaList={agendaList}
                         vendorList={vendorList}

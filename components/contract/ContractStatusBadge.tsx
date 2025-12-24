@@ -19,6 +19,7 @@ export function ContractStatusBadge({ status, className }: ContractStatusBadgePr
             case 'finished':
                 return "bg-black text-white hover:bg-gray-800 border-transparent"
             case 'on progress':
+                return "bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100"
             case 'draft':
                 return "bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-100"
             case 'ready to finalize':

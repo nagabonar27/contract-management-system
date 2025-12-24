@@ -19,6 +19,9 @@ import { FinalizeContractModal } from "@/components/contract/FinalizeContractMod
 import { Input } from "@/components/ui/input"
 import { getVersionBadgeColor, getDivisionColor, formatCurrency } from "@/lib/contractUtils"
 import { ContractService } from "@/services/contractService"
+import { ContractActionsMenu } from "@/components/contract/ContractActionsMenu"
+import { useAuth } from "@/context/AuthContext"
+import { isAdmin } from "@/lib/adminUtils"
 
 interface ExpiringContract {
     id: string
@@ -45,6 +48,7 @@ export function ExpiringContractsTable() {
     const router = useRouter()
     const supabase = createClientComponentClient()
     const queryClient = useQueryClient()
+    const { profile } = useAuth()
     // const [contracts, setContracts] = useState<ExpiringContract[]>([]) // Removed
     const [filteredContracts, setFilteredContracts] = useState<ExpiringContract[]>([])
     // const [loading, setLoading] = useState(true) // Removed
@@ -325,6 +329,16 @@ export function ExpiringContractsTable() {
         }
     }
 
+    const handleDelete = async (id: string) => {
+        try {
+            await ContractService.deleteContract(supabase, id)
+            toast.success("Contract deleted successfully")
+            queryClient.invalidateQueries({ queryKey: ['expiringContracts'] })
+        } catch (error: any) {
+            toast.error("Failed to delete contract", { description: error.message })
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div>
@@ -479,34 +493,17 @@ export function ExpiringContractsTable() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <div onClick={(e) => e.stopPropagation()}>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                                <span className="sr-only">Open menu</span>
-                                                                <MoreVertical className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onClick={() => handleViewContract(contract.id)}>
-                                                                <Eye className="mr-2 h-4 w-4" />
-                                                                Open Bid Agenda
-                                                            </DropdownMenuItem>
-                                                            {!contractsWithAmendment.has(contract.parent_id) && (
-                                                                <>
-                                                                    <DropdownMenuItem onClick={() => handleAmendClick(contract)}>
-                                                                        <FileEdit className="mr-2 h-4 w-4" />
-                                                                        Amend Contract
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => handleFinishClick(contract)}>
-                                                                        <FileEdit className="mr-2 h-4 w-4" />
-                                                                        Finish Contract
-                                                                    </DropdownMenuItem>
-                                                                </>
-                                                            )}
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
+                                                <ContractActionsMenu
+                                                    contractId={contract.id}
+                                                    type="active"
+                                                    canDelete={isAdmin(profile?.position)}
+                                                    isAmendDisabled={contractsWithAmendment.has(contract.parent_id)}
+                                                    onAmend={() => handleAmendClick(contract)}
+                                                    onFinish={() => handleFinishClick(contract)}
+                                                    onDelete={async () => {
+                                                        await handleDelete(contract.id)
+                                                    }}
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     )
