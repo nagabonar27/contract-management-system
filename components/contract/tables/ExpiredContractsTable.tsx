@@ -26,12 +26,18 @@ interface ExpiredContract {
     parent_id: string
 }
 
+import { useQuery } from "@tanstack/react-query"
+
+// ... imports
+
+// ... interface
+
 export function ExpiredContractsTable() {
     const router = useRouter()
     const supabase = createClientComponentClient()
-    const [contracts, setContracts] = useState<ExpiredContract[]>([])
-    const [loading, setLoading] = useState(true)
-    const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set())
+    // const [contracts, setContracts] = useState<ExpiredContract[]>([]) // Removed
+    // const [loading, setLoading] = useState(true) // Removed
+    // const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set()) // Removed
 
     // Amendment State
     const [isAmendModalOpen, setIsAmendModalOpen] = useState(false)
@@ -47,31 +53,12 @@ export function ExpiredContractsTable() {
     const [finishRemarks, setFinishRemarks] = useState("")
     const [finishReferenceNumber, setFinishReferenceNumber] = useState("")
 
-    useEffect(() => {
-        fetchExpiredContracts()
-        checkAmendmentsInProgress()
-    }, [])
-
-    const checkAmendmentsInProgress = async () => {
-        const { data } = await supabase
-            .from('contract_versions')
-            .select('parent_id')
-            .eq('status', 'On Progress')
-            .not('parent_id', 'is', null)
-
-        if (data) {
-            const parentIds = new Set(data.map(d => d.parent_id as string))
-            setContractsWithAmendment(parentIds)
-        }
-    }
-
-    const fetchExpiredContracts = async () => {
-        setLoading(true)
-        try {
+    // REACT QUERY: Fetch Expired Contracts
+    const { data: contracts = [], isLoading: loading, refetch: refetchContracts } = useQuery({
+        queryKey: ['expiredContracts'],
+        queryFn: async () => {
             const today = new Date().toISOString().split('T')[0]
 
-            // We want Active contracts that are expired.
-            // Joining with parent to get contract_number.
             const { data, error } = await supabase
                 .from('contract_versions')
                 .select(`
@@ -90,7 +77,7 @@ export function ExpiredContractsTable() {
 
             if (error) throw error
 
-            const mapped: ExpiredContract[] = data.map((d: any) => ({
+            return data.map((d: any) => ({
                 id: d.id,
                 title: d.title,
                 contract_number: d.parent?.contract_number || '-',
@@ -100,15 +87,27 @@ export function ExpiredContractsTable() {
                 version: d.version,
                 parent_id: d.parent_id
             }))
-
-            setContracts(mapped)
-        } catch (error: any) {
-            console.error('Error fetching contracts:', error)
-            toast.error('Failed to load expired contracts: ' + error.message)
-        } finally {
-            setLoading(false)
         }
-    }
+    })
+
+    // REACT QUERY: Check Amendments
+    const { data: contractsWithAmendment = new Set() } = useQuery({
+        queryKey: ['amendmentsInProgress'],
+        queryFn: async () => {
+            const { data } = await supabase
+                .from('contract_versions')
+                .select('parent_id')
+                .eq('status', 'On Progress')
+                .not('parent_id', 'is', null)
+
+            if (data) {
+                return new Set(data.map(d => d.parent_id as string))
+            }
+            return new Set<string>()
+        }
+    })
+
+    // Removed useEffects and manual fetch functions
 
     const calculateDaysOverdue = (expiryDate: string) => {
         const today = new Date()
@@ -249,7 +248,7 @@ export function ExpiredContractsTable() {
             setIsFinishModalOpen(false)
             setFinishRemarks("")
             toast.success("Contract finished successfully!")
-            fetchExpiredContracts()
+            refetchContracts()
 
         } catch (error: any) {
             console.error("Error finishing contract:", error)

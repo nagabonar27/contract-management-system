@@ -50,7 +50,7 @@ type ContractData = {
     version: number
     parent_contract_id: string | null
     final_contract_amount: number | null
-    profiles: any
+    profiles: { full_name: string | null }[] | { full_name: string | null } | null
     contract_bid_agenda: { step_name: string; start_date: string | null; end_date: string | null }[]
     contract_vendors: {
         vendor_name: string
@@ -71,9 +71,11 @@ type PicPerformance = {
     leadTimeCount: number
 }
 
-// Helper for color coding (same as OngoingContractsTable)
+// ... existing types
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { calculatePriceDifference, formatCurrency, getDivisionColor } from "@/lib/contractUtils"
+import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
 import { format } from "date-fns"
 
 export default function PerformancePage() {
@@ -91,20 +93,23 @@ export default function PerformancePage() {
         try {
             setLoading(true)
             const { data, error } = await supabase
-                .from('contracts')
+                .from('contract_versions')
                 .select(`
                     id, 
-                    title,
-                    contract_number,
-                    status, 
-                    division, 
-                    created_at, 
-                    effective_date,
-                    expiry_date,
-                    version,
-                    parent_contract_id,
+                    title, 
+                    status,
+                    division,
+                    created_at,
+                    effective_date, 
+                    expiry_date, 
+                    version, 
+                    parent_id,
                     final_contract_amount,
-                    profiles:created_by ( full_name ),
+                    parent:parent_id(
+                        contract_number,
+                        created_at,
+                        profiles:created_by (full_name)
+                    ),
                     contract_bid_agenda ( step_name, start_date, end_date ),
                     contract_vendors ( vendor_name, is_appointed, price_note, revised_price_note )
                 `)
@@ -113,7 +118,25 @@ export default function PerformancePage() {
                 console.error("Supabase Error:", error)
                 throw error
             }
-            setContracts(data || [])
+
+            const mappedData: ContractData[] = (data || []).map((c: any) => ({
+                id: c.id,
+                title: c.title,
+                contract_number: c.parent?.contract_number || '-',
+                status: c.status,
+                division: c.division,
+                created_at: c.parent?.created_at || c.created_at, // Fallback
+                effective_date: c.effective_date,
+                expiry_date: c.expiry_date,
+                version: c.version,
+                parent_contract_id: c.parent_id,
+                final_contract_amount: c.final_contract_amount,
+                profiles: c.parent?.profiles, // Map profiles from parent
+                contract_bid_agenda: c.contract_bid_agenda || [],
+                contract_vendors: c.contract_vendors || []
+            }))
+
+            setContracts(mappedData)
         } catch (error) {
             console.error("Error fetching performance data:", error)
         } finally {
@@ -618,6 +641,7 @@ function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
                                 <TableRow className="hover:bg-transparent">
                                     <TableHead className="w-[25%]">Contract Name</TableHead>
                                     <TableHead>Division</TableHead>
+                                    <TableHead>Vendor</TableHead>
                                     <TableHead>Ver.</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Expiry</TableHead>
@@ -644,9 +668,11 @@ function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
                                     // Calculate Value and Saving
                                     let displayValue = '-'
                                     let displaySaving = '-'
+                                    let vendorName = '-'
 
                                     const appointed = c.contract_vendors?.find(v => v.is_appointed)
                                     if (appointed) {
+                                        vendorName = appointed.vendor_name
                                         const finalPrice = appointed.revised_price_note || appointed.price_note
                                         if (finalPrice) {
                                             // Clean string first then format
@@ -667,7 +693,7 @@ function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
                                             <TableCell className="font-medium">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     {c.title}
-                                                    {c.parent_contract_id && (
+                                                    {c.version > 1 && (
                                                         <Badge variant="outline" className="bg-violet-100 text-violet-800 border-violet-200 text-[10px] px-1 py-0 h-5">
                                                             Amendment
                                                         </Badge>
@@ -681,11 +707,10 @@ function ExpandedContractList({ contracts }: { contracts: ContractData[] }) {
                                                     </Badge>
                                                 )}
                                             </TableCell>
+                                            <TableCell>{vendorName}</TableCell>
                                             <TableCell><Badge variant="outline">v{c.version}</Badge></TableCell>
                                             <TableCell>
-                                                <Badge variant={c.status === 'Active' ? 'default' : 'secondary'} className="text-[10px]">
-                                                    {c.status}
-                                                </Badge>
+                                                <ContractStatusBadge status={c.status} className="text-[10px]" />
                                             </TableCell>
                                             <TableCell>{c.expiry_date ? format(new Date(c.expiry_date), 'dd MMM yyyy') : '-'}</TableCell>
                                             <TableCell>{displayValue}</TableCell>

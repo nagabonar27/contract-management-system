@@ -50,6 +50,7 @@ export interface ContractVendor {
     agenda_step_id: string | null
     created_at: string
     step_dates?: VendorStepDate[]
+    is_appointed?: boolean
 }
 
 interface BidAgendaSectionProps {
@@ -125,7 +126,7 @@ export function BidAgendaSection({
                             <tr className="border-b">
                                 <th className="h-10 px-4 text-left font-medium w-1/3">Step</th>
                                 <th className="h-10 px-4 text-left font-medium w-[300px]">Timeline</th>
-                                <th className="h-10 px-4 text-left font-medium">Details / Remarks</th>
+                                <th className="h-10 px-4 text-left font-medium">Remarks</th>
                                 {isEditingAgenda && <th className="h-10 px-4 text-right">Action</th>}
                             </tr>
                         </thead>
@@ -136,13 +137,15 @@ export function BidAgendaSection({
                                 </tr>
                             )}
                             {agendaList.map((item, index) => {
-                                const isClarification = item.step_name.includes("Clarification Meeting")
-                                const isVendorFindings = item.step_name === "Vendor Findings"
-                                const isAppointedVendor = item.step_name === "Appointed Vendor"
-                                const isRevisedPrice = item.step_name.includes("Revised Price")
-                                const isKYC = item.step_name.includes("KYC")
-                                const isTechEval = item.step_name.includes("Technical Evaluation")
-                                const isPrice = item.step_name.includes("Price") && !isRevisedPrice
+                                const step = item.step_name
+
+                                const isClarification = step.toLowerCase() === "Clarification Meeting"
+                                const isVendorFindings = step.toLowerCase() === "Vendor Findings"
+                                const isAppointedVendor = step.toLowerCase() === "Appointed Vendor"
+                                const isRevisedPrice = step.toLowerCase().includes("Revised Price")
+                                const isKYC = step.toLowerCase().includes("KYC")
+                                const isTechEval = step.toLowerCase().includes("Technical Evaluation")
+                                const isPrice = step.toLowerCase().includes("Price") && !isRevisedPrice
 
                                 const isVendorDependent = (isKYC || isTechEval || isPrice || isRevisedPrice || isAppointedVendor || isClarification) && !isVendorFindings
 
@@ -192,11 +195,13 @@ export function BidAgendaSection({
                                                                 }}
                                                             />
                                                         </div>
-                                                    ) : (
-                                                        <div className="flex flex-col items-center">
-                                                            <span className="text-muted-foreground">{item.start_date && item.end_date ? `${item.start_date} - ${item.end_date}` : (item.end_date || item.start_date || "-")}</span>
-                                                        </div>
-                                                    )
+                                                    ) :
+                                                        // completed date since start = end
+                                                        (
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs text-muted-foreground">Date: {item.start_date || "-"}</span>
+                                                            </div>
+                                                        )
                                                 ) : isEditingAgenda ? (
                                                     <div className="flex justify-center w-full">
                                                         <DateRangePicker
@@ -242,7 +247,7 @@ export function BidAgendaSection({
                                                             value={item.remarks || ""}
                                                             onChange={e => onUpdateAgendaItem(item.id, 'remarks', e.target.value)}
                                                             className="h-8 text-xs"
-                                                            placeholder="Remarks (e.g. Approved by Board)..."
+                                                            placeholder="Remarks..."
                                                         />
                                                     </div>
                                                 ) : (
@@ -384,7 +389,7 @@ export function BidAgendaSection({
                                                                                         onUpdateVendorData(v.id, 'step_dates' as any, updated)
                                                                                     }}
                                                                                     className="w-[200px] h-8 text-xs"
-                                                                                    placeholder="Vendor remarks..."
+                                                                                    placeholder="Remarks..."
                                                                                 />
                                                                             </div>
                                                                             <Button

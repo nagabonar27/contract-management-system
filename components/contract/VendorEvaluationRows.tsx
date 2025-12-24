@@ -76,202 +76,231 @@ export function VendorEvaluationRows({
     }
 
     return (
-        <tr>
-            <td colSpan={5} className="px-4 pb-4 pt-0 bg-muted/10">
-                <div className="p-4 border border-t-0 rounded-b-md space-y-3">
-                    <div className="flex justify-between items-center">
-                        <h4 className="text-sm font-semibold">Vendor Evaluations: {agendaItem.step_name}</h4>
-                    </div>
-                    <div className="grid gap-2">
-                        {vendorList.map(v => {
-                            let field: keyof ContractVendor | null = null
-                            if (isKYC) field = "kyc_note"
-                            if (isTechEval) field = "tech_eval_note"
-                            if (isPrice) field = "price_note"
-                            if (isRevisedPrice) field = "revised_price_note"
-                            // Clarification just uses dates, maybe notes later? For now no specific note field in schema, reuse remarks? 
-                            // Using kyc_note as a placeholder if needed, but for now just dates.
+        <>
+            {vendorList.map(v => {
+                let field: keyof ContractVendor | null = null
+                if (isKYC) field = "kyc_note"
+                if (isTechEval) field = "tech_eval_note"
+                if (isPrice) field = "price_note"
+                if (isRevisedPrice) field = "revised_price_note"
 
-                            // Skip failed vendors for tech eval and price (but maybe allow clarification?)
-                            if ((isTechEval || isPrice || isRevisedPrice) && v.kyc_result === 'Fail') return null
+                // Skip failed vendors for tech eval and price (but maybe allow clarification?)
+                if ((isTechEval || isPrice || isRevisedPrice) && v.kyc_result === 'Fail') return null
 
-                            const displayValue = field ? (v[field] || "-") : "-"
-                            const revisedValue = (isRevisedPrice && (v.revised_price_note === null || v.revised_price_note === undefined))
-                                ? v.price_note
-                                : (field ? v[field] : "")
+                const displayValue = field ? (v[field] || "-") : "-"
+                const revisedValue = (isRevisedPrice && (v.revised_price_note === null || v.revised_price_note === undefined))
+                    ? v.price_note
+                    : (field ? v[field] : "")
 
-                            return (
-                                <div key={v.id} className="flex items-center gap-2">
-                                    <div className="w-[200px] text-sm font-medium truncate" title={v.vendor_name}>
-                                        {v.vendor_name}
-                                    </div>
+                return (
+                    <tr key={v.id} className={cn("border-b hover:bg-muted/50 transition-colors group", isEditingAgenda ? "bg-white" : "bg-muted/5")}>
+                        {/* 1. Step / Vendor Name Column */}
+                        <td className="p-4 align-middle">
+                            <div className="flex items-center gap-2 pl-6 border-l-2 border-l-slate-200">
+                                <div className="text-sm font-medium text-slate-700" title={v.vendor_name}>
+                                    {v.vendor_name}
+                                </div>
+                            </div>
+                        </td>
 
-                                    {/* READ ONLY MODE */}
-                                    {!isEditingAgenda && (
-                                        <div className="flex-1 flex items-center justify-between text-sm text-gray-700 bg-white p-1 px-2 border rounded">
-                                            <span>
-                                                {isKYC ? (v.kyc_result || "Pending") + (displayValue !== "-" ? ` - ${displayValue}` : "") :
-                                                    isTechEval ? (v.tech_eval_score ? `Score: ${v.tech_eval_score}` : "") + (v.tech_eval_note ? ` - ${v.tech_eval_note}` : "") :
-                                                        (isPrice || isRevisedPrice) ? `IDR ${formatNumber(revisedValue || "0")}` :
-                                                            isClarification ? (
-                                                                (() => {
-                                                                    const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
-                                                                    const dates = sd ? `${sd.start_date || "?"} - ${sd.end_date || "?"}` : "No dates set"
-                                                                    const remark = v.tech_eval_remarks ? ` (${v.tech_eval_remarks})` : ""
-                                                                    return dates + remark
-                                                                })()
-                                                            ) :
-                                                                displayValue}
-                                            </span>
-                                            {isRevisedPrice && (() => {
-                                                const original = parseFloat(v.price_note || "0")
-                                                const revised = parseFloat(revisedValue || "0")
-                                                const diff = original - revised
-                                                if (!v.price_note && !revisedValue) return null
+                        {/* 2. Timeline Column - Centered */}
+                        <td className="p-4 align-middle text-center">
+                            {/* READ ONLY MODE */}
+                            {!isEditingAgenda && (
+                                <div className="text-sm text-slate-600 flex justify-center">
+                                    {isKYC ? (
+                                        <Badge variant={v.kyc_result === 'Pass' ? 'outline' : v.kyc_result === 'Fail' ? 'destructive' : 'outline'}
+                                            className={cn(v.kyc_result === 'Pass' && "bg-green-100 text-green-800 hover:bg-green-100 border-green-200")}
+                                        >
+                                            {v.kyc_result || "Pending"}
+                                        </Badge>
+                                    ) :
+                                        isClarification ? (() => {
+                                            const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
+                                            return sd ? (
+                                                <div className="flex flex-col items-center text-xs">
+                                                    <span>{sd.start_date || "?"}</span>
+                                                    <span className="text-muted-foreground">to</span>
+                                                    <span>{sd.end_date || "?"}</span>
+                                                </div>
+                                            ) : "-"
+                                        })() :
+                                            // General date display for other steps if dates exist
+                                            (() => {
+                                                const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
+                                                return sd ? (
+                                                    <div className="flex flex-col items-center text-xs">
+                                                        <span>{sd.start_date || "?"}</span>
+                                                        <span className="text-muted-foreground">to</span>
+                                                        <span>{sd.end_date || "?"}</span>
+                                                    </div>
+                                                ) : "-"
+                                            })()
+                                    }
+                                </div>
+                            )}
 
-                                                return (
-                                                    <span className={cn("text-xs font-medium ml-2", diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-gray-500")}>
-                                                        {diff > 0 ? "+" : ""}{formatNumber(diff.toString())}
-                                                    </span>
-                                                )
-                                            })()}
+                            {/* EDIT MODE */}
+                            {isEditingAgenda && (
+                                <div className="flex justify-center w-full">
+                                    {(isKYC || isClarification || isPrice || isRevisedPrice || isTechEval) && (
+                                        <DateRangePicker
+                                            className="w-[220px]"
+                                            value={{
+                                                from: getStepDate(v, 'start_date') ? parseISO(getStepDate(v, 'start_date')) : undefined,
+                                                to: getStepDate(v, 'end_date') ? parseISO(getStepDate(v, 'end_date')) : undefined,
+                                            }}
+                                            onChange={(val: DateRange | undefined) => {
+                                                const startDate = val?.from ? format(val.from, 'yyyy-MM-dd') : ""
+                                                const endDate = val?.to ? format(val.to, 'yyyy-MM-dd') : ""
+
+                                                const stepDates = v.step_dates || []
+                                                const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === agendaItem.id)
+
+                                                let updated
+                                                if (existingIndex >= 0) {
+                                                    updated = [...stepDates]
+                                                    updated[existingIndex] = { ...updated[existingIndex], start_date: startDate, end_date: endDate }
+                                                } else {
+                                                    updated = [...stepDates, {
+                                                        id: `temp-${Date.now()}`,
+                                                        vendor_id: v.id,
+                                                        agenda_step_id: agendaItem.id,
+                                                        start_date: startDate,
+                                                        end_date: endDate
+                                                    }]
+                                                }
+                                                onUpdateVendorData(v.id, 'step_dates' as any, updated)
+                                            }}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </td>
+
+                        {/* 3. Remarks Column (Inputs for Note/Score/Price) - Left Aligned but Compact */}
+                        <td className="p-4 align-middle">
+                            {/* READ ONLY MODE */}
+                            {!isEditingAgenda && (
+                                <div className="text-sm">
+                                    {isKYC ? (displayValue !== "-" ? displayValue : "") :
+                                        isTechEval ? (
+                                            <div className="flex items-center gap-2">
+                                                {v.tech_eval_score && <Badge variant="outline">Score: {v.tech_eval_score}</Badge>}
+                                                <span>{v.tech_eval_note}</span>
+                                            </div>
+                                        ) :
+                                            (isPrice || isRevisedPrice) ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono">IDR {formatNumber(revisedValue || "0")}</span>
+                                                    {isRevisedPrice && (() => {
+                                                        const original = parseFloat(v.price_note || "0")
+                                                        const revised = parseFloat(revisedValue || "0")
+                                                        const diff = original - revised
+                                                        return diff !== 0 ? (
+                                                            <span className={cn("text-xs font-medium ml-2 px-1.5 py-0.5 rounded", diff > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
+                                                                {diff > 0 ? "+" : ""}{formatNumber(diff.toString())}
+                                                            </span>
+                                                        ) : null
+                                                    })()}
+                                                </div>
+                                            ) :
+                                                isClarification ? (v.tech_eval_remarks || "-") :
+                                                    displayValue}
+                                </div>
+                            )}
+
+                            {/* EDIT MODE */}
+                            {isEditingAgenda && (
+                                <div className="flex flex-col gap-2 max-w-md">
+                                    {/* KYC Specifics */}
+                                    {isKYC && (
+                                        <div className="flex gap-2">
+                                            <Select value={v.kyc_result || ""} onValueChange={val => onUpdateVendorData(v.id, 'kyc_result', val)}>
+                                                <SelectTrigger className="h-9 w-[110px] text-xs bg-white">
+                                                    <SelectValue placeholder="Status" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Pass">Pass</SelectItem>
+                                                    <SelectItem value="Fail">Fail</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Input
+                                                value={v.kyc_note || ""}
+                                                onChange={e => onUpdateVendorData(v.id, 'kyc_note', e.target.value)}
+                                                className="h-9 flex-1 text-xs bg-white"
+                                                placeholder="Remarks..."
+                                            />
                                         </div>
                                     )}
 
-                                    {/* EDIT MODE */}
-                                    {isEditingAgenda && (
-                                        <>
-                                            {/* Unified Date Inputs for KYC, Clarification, Price, Revised Price */}
-                                            {(isKYC || isClarification || isPrice || isRevisedPrice) && (
-                                                <>
-                                                    <div className="flex items-center gap-2">
-                                                        <Label className="text-xs text-muted-foreground whitespace-nowrap">Timeline:</Label>
-                                                        <DateRangePicker
-                                                            className="w-[240px] mx-auto"
-                                                            value={{
-                                                                from: getStepDate(v, 'start_date') ? parseISO(getStepDate(v, 'start_date')) : undefined,
-                                                                to: getStepDate(v, 'end_date') ? parseISO(getStepDate(v, 'end_date')) : undefined,
-                                                            }}
-                                                            onChange={(val: DateRange | undefined) => {
-                                                                const startDate = val?.from ? format(val.from, 'yyyy-MM-dd') : ""
-                                                                const endDate = val?.to ? format(val.to, 'yyyy-MM-dd') : ""
+                                    {/* Clarification */}
+                                    {isClarification && (
+                                        <Input
+                                            value={v.tech_eval_remarks || ""}
+                                            onChange={e => onUpdateVendorData(v.id, 'tech_eval_remarks', e.target.value)}
+                                            className="h-9 flex-1 text-xs bg-white"
+                                            placeholder="Remarks..."
+                                        />
+                                    )}
 
-                                                                // Use updateStepDate helper logic but customized for batch update
-                                                                // Since helper updates one field at a time, we'll manually update both here
-                                                                const stepDates = v.step_dates || []
-                                                                const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === agendaItem.id)
+                                    {/* TECH EVAL */}
+                                    {isTechEval && (
+                                        <div className="flex gap-2 items-center">
+                                            <div className="relative">
+                                                <Input
+                                                    type="number"
+                                                    value={v.tech_eval_score || ""}
+                                                    onChange={e => onUpdateVendorData(v.id, 'tech_eval_score', e.target.value)}
+                                                    className="h-9 w-[80px] text-xs bg-white pr-2"
+                                                    placeholder="0-100"
+                                                />
+                                                <span className="absolute right-2 top-2.5 text-[10px] text-muted-foreground">Score</span>
+                                            </div>
+                                            <Input
+                                                value={v.tech_eval_note || ""}
+                                                onChange={e => onUpdateVendorData(v.id, 'tech_eval_note', e.target.value)}
+                                                className="h-9 flex-1 text-xs bg-white"
+                                                placeholder="Remarks..."
+                                            />
+                                        </div>
+                                    )}
 
-                                                                let updated
-                                                                if (existingIndex >= 0) {
-                                                                    updated = [...stepDates]
-                                                                    updated[existingIndex] = {
-                                                                        ...updated[existingIndex],
-                                                                        start_date: startDate,
-                                                                        end_date: endDate
-                                                                    }
-                                                                } else {
-                                                                    updated = [...stepDates, {
-                                                                        id: `temp-${Date.now()}`,
-                                                                        vendor_id: v.id,
-                                                                        agenda_step_id: agendaItem.id,
-                                                                        start_date: startDate,
-                                                                        end_date: endDate
-                                                                    }]
-                                                                }
-                                                                onUpdateVendorData(v.id, 'step_dates' as any, updated)
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    {isClarification && (
-                                                        <Input
-                                                            value={v.tech_eval_remarks || ""}
-                                                            onChange={e => onUpdateVendorData(v.id, 'tech_eval_remarks', e.target.value)}
-                                                            className="h-8 flex-1 text-xs bg-white min-w-[200px]"
-                                                            placeholder="Clarification remarks..."
-                                                        />
-                                                    )}
-                                                </>
-                                            )}
-
-                                            {/* KYC Specifics */}
-                                            {isKYC && (
-                                                <>
-                                                    <Select value={v.kyc_result || ""} onValueChange={val => onUpdateVendorData(v.id, 'kyc_result', val)}>
-                                                        <SelectTrigger className="h-8 w-[100px] text-xs bg-white">
-                                                            <SelectValue placeholder="Status" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="Pass">Pass</SelectItem>
-                                                            <SelectItem value="Fail">Fail</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <Input
-                                                        value={v.kyc_note || ""}
-                                                        onChange={e => onUpdateVendorData(v.id, 'kyc_note', e.target.value)}
-                                                        className="h-8 flex-1 text-xs bg-white"
-                                                        placeholder="KYC notes..."
+                                    {/* PRICE & REVISED PRICE */}
+                                    {(isPrice || isRevisedPrice) && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                {isRevisedPrice && <span className="text-xs font-medium w-12">Revised:</span>}
+                                                <InputGroup className="h-9 flex-1">
+                                                    <InputGroupAddon><InputGroupText>IDR</InputGroupText></InputGroupAddon>
+                                                    <InputGroupInput
+                                                        className="h-9 text-xs bg-white font-mono"
+                                                        placeholder="0"
+                                                        value={formatNumber(isRevisedPrice ? (revisedValue || "") : (v[field!] || ""))}
+                                                        onChange={e => {
+                                                            const val = parseNumber(e.target.value)
+                                                            onUpdateVendorData(v.id, field!, val)
+                                                        }}
                                                     />
-                                                </>
+                                                </InputGroup>
+                                            </div>
+                                            {/* Previous Price Context for Revised */}
+                                            {isRevisedPrice && v.price_note && (
+                                                <div className="text-xs text-muted-foreground pl-[3.5rem]">
+                                                    Original: IDR {formatNumber(v.price_note)}
+                                                </div>
                                             )}
-
-                                            {/* PRICE & REVISED PRICE Specifics */}
-                                            {(isPrice || isRevisedPrice) && (
-                                                <>
-                                                    <div className="flex-1 flex items-center gap-2">
-                                                        {isRevisedPrice && <span className="text-xs text-muted-foreground whitespace-nowrap">Revised:</span>}
-                                                        <InputGroup className="h-8 flex-1">
-                                                            <InputGroupAddon><InputGroupText>IDR</InputGroupText></InputGroupAddon>
-                                                            <InputGroupInput
-                                                                className="h-8 text-xs bg-white"
-                                                                placeholder={isRevisedPrice ? formatNumber(v.price_note || "0") : "0"}
-                                                                value={formatNumber(isRevisedPrice ? (revisedValue || "") : (v[field!] || ""))}
-                                                                onChange={e => {
-                                                                    const val = parseNumber(e.target.value)
-                                                                    onUpdateVendorData(v.id, field!, val)
-                                                                }}
-                                                            />
-                                                        </InputGroup>
-                                                        {isRevisedPrice && (() => {
-                                                            const original = parseFloat(v.price_note || "0")
-                                                            const revised = parseFloat(revisedValue || "0")
-                                                            const diff = original - revised
-                                                            if (!v.price_note && !revisedValue) return null
-                                                            return (
-                                                                <span className={cn("text-xs font-medium whitespace-nowrap", diff > 0 ? "text-green-600" : diff < 0 ? "text-red-600" : "text-gray-500")}>
-                                                                    {diff > 0 ? "+" : ""}{formatNumber(diff.toString())}
-                                                                </span>
-                                                            )
-                                                        })()}
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            {/* TECH EVAL: Score + Notes */}
-                                            {isTechEval && (
-                                                <>
-                                                    <Input
-                                                        type="number"
-                                                        value={v.tech_eval_score || ""}
-                                                        onChange={e => onUpdateVendorData(v.id, 'tech_eval_score', e.target.value)}
-                                                        className="h-8 w-[100px] text-xs bg-white"
-                                                        placeholder="Score"
-                                                    />
-                                                    <Input
-                                                        value={v.tech_eval_note || ""}
-                                                        onChange={e => onUpdateVendorData(v.id, 'tech_eval_note', e.target.value)}
-                                                        className="h-8 flex-1 text-xs bg-white"
-                                                        placeholder="Technical evaluation notes..."
-                                                    />
-                                                </>
-                                            )}
-                                        </>
+                                        </div>
                                     )}
                                 </div>
-                            )
-                        })}
-                    </div>
-                </div>
-            </td>
-        </tr>
+                            )}
+                        </td>
+
+                        {/* 4. Action Column (Empty) */}
+                        {isEditingAgenda && <td className="p-4 align-middle"></td>}
+                    </tr>
+                )
+            })}
+        </>
     )
 }

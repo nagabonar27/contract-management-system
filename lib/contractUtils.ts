@@ -127,19 +127,85 @@ export function getExpiryBadgeVariant(daysUntilExpiry: number | null): 'destruct
  * @param div - Division abbreviation
  * @returns Tailwind CSS class string
  */
-export const getDivisionColor = (div: string | null) => {
-    switch (div) {
-        case 'TECH': return 'bg-blue-100 text-blue-800 border-blue-200'
-        case 'HRGA': return 'bg-pink-100 text-pink-800 border-pink-200'
-        case 'FIN': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-        case 'LGL': return 'bg-purple-100 text-purple-800 border-purple-200'
-        case 'PROC': return 'bg-orange-100 text-orange-800 border-orange-200'
-        case 'OPS': return 'bg-cyan-100 text-cyan-800 border-cyan-200'
-        case 'EXT': return 'bg-lime-100 text-lime-800 border-lime-200'
-        case 'PLNT': return 'bg-amber-100 text-amber-800 border-amber-200'
-        case 'MGMT': return 'bg-indigo-100 text-indigo-800 border-indigo-200'
-        default: return 'bg-slate-100 text-slate-800 border-slate-200'
+const PALETTE_COLORS = [
+    "bg-blue-100 text-blue-800 border-blue-200",
+    "bg-green-100 text-green-800 border-green-200",
+    "bg-red-100 text-red-800 border-red-200",
+    "bg-yellow-100 text-yellow-800 border-yellow-200",
+    "bg-purple-100 text-purple-800 border-purple-200",
+    "bg-cyan-100 text-cyan-800 border-cyan-200",
+    "bg-orange-100 text-orange-800 border-orange-200",
+    "bg-indigo-100 text-indigo-800 border-indigo-200",
+    "bg-pink-100 text-pink-800 border-pink-200",
+    "bg-emerald-100 text-emerald-800 border-emerald-200",
+    "bg-lime-100 text-lime-800 border-lime-200",
+    "bg-amber-100 text-amber-800 border-amber-200"
+]
+
+const CHART_COLORS = [
+    "#2563eb", // Blue
+    "#16a34a", // Green
+    "#dc2626", // Red
+    "#ca8a04", // Yellow
+    "#9333ea", // Purple
+    "#0891b2", // Cyan
+    "#ea580c", // Orange
+    "#4f46e5", // Indigo
+    "#db2777", // Pink
+    "#059669", // Emerald
+    "#65a30d", // Lime
+    "#d97706"  // Amber
+]
+
+/**
+ * Get hex color for string (used for charts)
+ * @param str - Input string
+ * @returns Hex color string
+ */
+export function getColorForString(str: string | null): string {
+    if (!str) return "#94a3b8" // Slate 400
+
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash)
     }
+    const index = Math.abs(hash) % CHART_COLORS.length
+    return CHART_COLORS[index]
+}
+
+/**
+ * Get color class for division badge
+ * @param div - Division abbreviation
+ * @returns Tailwind CSS class string
+ */
+export const getDivisionColor = (div: string | null) => {
+    if (!div) return 'bg-slate-100 text-slate-800 border-slate-200'
+
+    const normalized = div.toUpperCase().trim()
+
+    const colorMap: Record<string, string> = {
+        'TECH': 'bg-blue-100 text-blue-800 border-blue-200',
+        'HRGA': 'bg-pink-100 text-pink-800 border-pink-200',
+        'FIN': 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        'LGL': 'bg-purple-100 text-purple-800 border-purple-200',
+        'PROC': 'bg-orange-100 text-orange-800 border-orange-200',
+        'OPS': 'bg-cyan-100 text-cyan-800 border-cyan-200',
+        'EXT': 'bg-lime-100 text-lime-800 border-lime-200',
+        'PLNT': 'bg-amber-100 text-amber-800 border-amber-200',
+        'MGMT': 'bg-indigo-100 text-indigo-800 border-indigo-200'
+    }
+
+    if (colorMap[normalized]) {
+        return colorMap[normalized]
+    }
+
+    // Fallback: Generate consistent color hash
+    let hash = 0
+    for (let i = 0; i < normalized.length; i++) {
+        hash = normalized.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    const index = Math.abs(hash) % PALETTE_COLORS.length
+    return PALETTE_COLORS[index]
 }
 
 /**

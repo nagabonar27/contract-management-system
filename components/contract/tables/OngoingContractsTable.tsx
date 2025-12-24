@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { useQuery } from "@tanstack/react-query"
 import {
     Table,
     TableBody,
@@ -12,6 +13,7 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -31,9 +33,10 @@ import {
     Search
 } from "lucide-react"
 import { toast } from "sonner"
-import { formatCurrency, getDivisionColor } from "@/lib/contractUtils"
+import { formatCurrency, getDivisionColor, getColorForString } from "@/lib/contractUtils"
 import { format } from "date-fns"
 import CreateContractSheet from "@/components/contract/CreateContractSheet"
+import { ContractService } from "@/services/contractService"
 import { InteractivePieChart } from "@/components/charts/InteractivePieChart"
 import {
     AlertDialog,
@@ -60,19 +63,6 @@ const PALETTE_COLORS = [
     "#4f46e5", // Indigo
 ]
 
-
-
-const getColorForString = (str: string | null): string => {
-    if (!str) return "#94a3b8" // Slate 400 for unknown
-    let hash = 0
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash)
-    }
-    const index = Math.abs(hash) % PALETTE_COLORS.length
-    return PALETTE_COLORS[index]
-}
-
-/* Local color helpers removed in favor of shared getDivisionColor */
 
 interface ContractTable {
     id: string
@@ -109,9 +99,8 @@ export function OngoingContractsTable() {
     const supabase = createClientComponentClient()
 
     // State
-    const [tasks, setTasks] = useState<ContractTable[]>([])
+    // Tasks managed by Query
     const [filteredTasks, setFilteredTasks] = useState<ContractTable[]>([])
-    const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
 
     // Create State
@@ -125,62 +114,10 @@ export function OngoingContractsTable() {
     const [divisionData, setDivisionData] = useState<{ name: string, value: number, fill: string }[]>([])
     const [statusData, setStatusData] = useState<{ name: string, value: number, fill: string }[]>([])
 
-    useEffect(() => {
-        fetchTasks()
-    }, [])
-
-    // Filter Logic
-    useEffect(() => {
-        if (!searchTerm) {
-            setFilteredTasks(tasks)
-        } else {
-            const lower = searchTerm.toLowerCase()
-            setFilteredTasks(tasks.filter(t =>
-                t.title?.toLowerCase().includes(lower) ||
-                t.contract_number?.toLowerCase().includes(lower) ||
-                t.appointed_vendor?.toLowerCase().includes(lower) ||
-                t.user_name?.toLowerCase().includes(lower)
-            ))
-        }
-    }, [searchTerm, tasks])
-
-    // Update charts when tasks change
-    useEffect(() => {
-        if (!tasks.length) return
-
-        // Division Data
-        const divCounts: Record<string, number> = {}
-        tasks.forEach(t => {
-            const d = t.division || "Unknown"
-            divCounts[d] = (divCounts[d] || 0) + 1
-        })
-        const divChart = Object.entries(divCounts).map(([name, value]) => ({
-            name,
-            value,
-            fill: getColorForString(name)
-        }))
-        setDivisionData(divChart)
-
-        // Status Data (or Type?)
-        // Let's do Category.
-        const catCounts: Record<string, number> = {}
-        tasks.forEach(t => {
-            const c = t.category || "General"
-            catCounts[c] = (catCounts[c] || 0) + 1
-        })
-        const catChart = Object.entries(catCounts).map(([name, value], i) => ({
-            name,
-            value,
-            fill: PALETTE_COLORS[i % PALETTE_COLORS.length]
-        }))
-        setStatusData(catChart)
-
-    }, [tasks])
-
-    const fetchTasks = async () => {
-        setLoading(true)
-        try {
-            // UPDATED: Query 'contract_versions' + join 'contract_parents'
+    // REACT QUERY
+    const { data: tasks = [], isLoading: loading, refetch } = useQuery({
+        queryKey: ['ongoingContracts'],
+        queryFn: async () => {
             const { data, error } = await supabase
                 .from('contract_versions')
                 .select(`
@@ -207,7 +144,8 @@ export function OngoingContractsTable() {
                         profiles:created_by (full_name)
                     ),
                     contract_types (name),
-                    contract_bid_agenda:contract_bid_agenda(step_name, status, updated_at)
+                    contract_bid_agenda:contract_bid_agenda(step_name, status, updated_at),
+                    contract_vendors(vendor_name, is_appointed)
                 `)
                 .neq('status', 'Completed')
                 .neq('status', 'Finished')
@@ -217,8 +155,11 @@ export function OngoingContractsTable() {
 
             if (error) throw error
 
-            const formatted = (data || []).map((item: any) => {
+            return (data || []).map((item: any) => {
                 const parent = item.parent || {}
+                const vendors = item.contract_vendors || []
+                const appointedVendor = vendors.find((v: any) => v.is_appointed)?.vendor_name
+
                 return {
                     id: item.id, // Version ID
                     title: item.title,
@@ -232,7 +173,7 @@ export function OngoingContractsTable() {
                     department: item.department,
                     contract_type_name: item.contract_types?.name,
                     category: item.category,
-                    appointed_vendor: item.appointed_vendor,
+                    appointed_vendor: appointedVendor || null,
                     current_step: item.current_step || "Initiated",
                     is_cr: item.is_cr || false,
                     is_on_hold: item.is_on_hold || false,
@@ -242,17 +183,57 @@ export function OngoingContractsTable() {
                     contract_bid_agenda: item.contract_bid_agenda
                 }
             })
-
-            setTasks(formatted)
-            setFilteredTasks(formatted)
-
-        } catch (error: any) {
-            console.error("Error fetching contracts:", error)
-            toast.error("Failed to load contracts")
-        } finally {
-            setLoading(false)
         }
-    }
+    })
+
+    // Filter Logic
+    useEffect(() => {
+        if (!searchTerm) {
+            setFilteredTasks(tasks)
+        } else {
+            const lower = searchTerm.toLowerCase()
+            setFilteredTasks(tasks.filter(t =>
+                t.title?.toLowerCase().includes(lower) ||
+                t.contract_number?.toLowerCase().includes(lower) ||
+                t.appointed_vendor?.toLowerCase().includes(lower) ||
+                t.user_name?.toLowerCase().includes(lower)
+            ))
+        }
+    }, [searchTerm, tasks])
+
+    // Update charts when tasks change
+    useEffect(() => {
+        if (!tasks.length) return
+
+        // Division Data
+        const divCounts: Record<string, number> = {}
+        tasks.forEach(t => {
+            const d = t.division || "Unknown"
+            divCounts[d] = (divCounts[d] || 0) + 1
+        })
+        const divChartForGraph = Object.entries(divCounts).map(([name, value]) => ({
+            name,
+            value,
+            fill: getColorForString(name)
+        }))
+
+        setDivisionData(divChartForGraph)
+
+        // Status Data (or Type?)
+        // Let's do Category.
+        const catCounts: Record<string, number> = {}
+        tasks.forEach(t => {
+            const c = t.category || "General"
+            catCounts[c] = (catCounts[c] || 0) + 1
+        })
+        const catChart = Object.entries(catCounts).map(([name, value], i) => ({
+            name,
+            value,
+            fill: PALETTE_COLORS[i % PALETTE_COLORS.length]
+        }))
+        setStatusData(catChart)
+
+    }, [tasks])
 
     const handleDeleteClick = (id: string) => {
         setDeleteId(id)
@@ -263,21 +244,15 @@ export function OngoingContractsTable() {
         if (!deleteId) return
 
         try {
-            // UPDATE: Delete from version
-            // Ideally we should soft delete or delete parent if it's the only version.
-            // For now, strict delete from version is what we changed to.
-            const { error } = await supabase
-                .from('contract_versions')
-                .delete()
-                .eq('id', deleteId)
-
-            if (error) throw error
+            // UPDATE: Use Service to handle cleanup (parent text, etc.)
+            await ContractService.deleteContract(supabase, deleteId)
 
             toast.success("Contract deleted successfully")
-            // Remove from state directly
-            const newTasks = tasks.filter(t => t.id !== deleteId)
-            setTasks(newTasks)
-            // Filter update handled by useEffect
+
+            // REACT QUERY: Invalidate to refetch
+            refetch()
+
+            // Filter update handled by useEffect reacting to tasks change (which happens after refetch)
 
         } catch (error: any) {
             toast.error("Failed to delete contract", { description: error.message })
@@ -312,7 +287,7 @@ export function OngoingContractsTable() {
                     onOpenChange={setIsCreateOpen}
                     onSuccess={() => {
                         setIsCreateOpen(false)
-                        fetchTasks()
+                        refetch()
                     }}
                 />
             </div>
@@ -397,13 +372,13 @@ export function OngoingContractsTable() {
                                         </div>
                                     </TableCell>
                                     <TableCell>{task.appointed_vendor || "-"}</TableCell>
-                                    <TableCell>{formatCurrency(task.contract_value)}</TableCell>
-                                    <TableCell>{formatCurrency(task.cost_savings)}</TableCell>
+                                    <TableCell>{task.contract_value > 0 ? formatCurrency(task.contract_value) : "-"}</TableCell>
+                                    <TableCell>{task.cost_savings > 0 ? formatCurrency(task.cost_savings) : "-"}</TableCell>
                                     <TableCell>{task.user_name || "-"}</TableCell>
                                     <TableCell>
                                         {task.division && (
                                             <Badge
-                                                variant="outline"
+                                                variant="secondary"
                                                 className={`text-[10px] px-1 py-0 h-5 border ${getDivisionColor(task.division)}`}
                                             >
                                                 {task.division}
@@ -415,7 +390,7 @@ export function OngoingContractsTable() {
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-col gap-1">
-                                            <Badge variant="secondary" className="w-fit">{task.status}</Badge>
+                                            <ContractStatusBadge status={task.status} />
                                             <span className="text-xs text-muted-foreground">
                                                 Start: {task.start_date ? format(new Date(task.start_date), 'dd MMM yyyy') : '-'}
                                             </span>

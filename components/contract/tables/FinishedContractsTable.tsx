@@ -29,19 +29,22 @@ interface FinishedContract {
     parent_id: string
 }
 
+import { useQuery } from "@tanstack/react-query"
+
+// ... imports
+
+// ... interface
+
 export function FinishedContractsTable() {
     const router = useRouter()
     const supabase = createClientComponentClient()
-    const [contracts, setContracts] = useState<FinishedContract[]>([])
-    const [loading, setLoading] = useState(true)
+    // const [contracts, setContracts] = useState<FinishedContract[]>([]) // Removed
+    // const [loading, setLoading] = useState(true) // Removed
 
-    useEffect(() => {
-        fetchContracts()
-    }, [])
-
-    const fetchContracts = async () => {
-        setLoading(true)
-        try {
+    // REACT QUERY
+    const { data: contracts = [], isLoading: loading } = useQuery({
+        queryKey: ['finishedContracts'],
+        queryFn: async () => {
             const { data, error } = await supabase
                 .from('contract_versions')
                 .select(`
@@ -60,7 +63,7 @@ export function FinishedContractsTable() {
 
             if (error) throw error
 
-            const mapped: FinishedContract[] = data.map((d: any) => ({
+            return data.map((d: any) => ({
                 id: d.id,
                 title: d.title,
                 contract_number: d.parent?.contract_number || '-',
@@ -71,15 +74,10 @@ export function FinishedContractsTable() {
                 version: d.version,
                 parent_id: d.parent_id
             }))
-
-            setContracts(mapped)
-        } catch (error: any) {
-            console.error('Error fetching contracts:', error)
-            toast.error('Failed to load contracts', { description: error.message })
-        } finally {
-            setLoading(false)
         }
-    }
+    })
+
+    // Removed useEffect and fetchContracts
 
     const handleViewContract = (id: string) => {
         router.push(`/bid-agenda/${id}`)

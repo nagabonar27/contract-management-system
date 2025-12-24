@@ -31,16 +31,24 @@ export default async function DashboardPage() {
     // - Total ongoing contracts (status != 'Finished')
     // - New contracts this week (created_at is within this week)
     // - Avg lead time for ongoing (Current Time - created_at)
+    // 2. Fetch Contracts Data - SWITCH TO CONTRACT_VERSIONS
+    // We need:
+    // - Total ongoing contracts (status = 'On Progress', 'Draft' etc. NOT 'Active'/'Finished')
     const { data: contracts, error: contractsError } = await supabase
-        .from('contracts')
+        .from('contract_versions')
         .select('id, title, status, created_at, updated_at')
+        .eq('is_current', true)
 
     if (contractsError) {
         console.error("Error fetching contracts:", contractsError)
     }
 
     const allContracts = contracts || []
-    const ongoingContracts = allContracts.filter(c => c.status !== 'Finished' && c.status !== 'Completed')
+
+    // Define "Ongoing" as anything NOT Active/Completed/Finished/Expired
+    const isOngoing = (status: string) => !['Active', 'Finished', 'Completed', 'Expired'].includes(status)
+
+    const ongoingContracts = allContracts.filter(c => isOngoing(c.status))
 
     // Calculate Total Ongoing
     const totalOngoing = ongoingContracts.length
@@ -69,11 +77,8 @@ export default async function DashboardPage() {
         avgLeadTime = Number(days.toFixed(1)) // 1 decimal place
     }
 
-    // 3. Prepare Chart Data (Weekly Load - Active Contracts per week for last 8 weeks)
+    // 3. Prepare Chart Data (Weekly Load - ONGOING Contracts per week for last 8 weeks)
     // "Weekly load" = "ongoing contract per week".
-    // We calculate active contracts for each of the last 8 weeks.
-    // Definition of Active in Week X: Created <= WeekEnd AND (Status != Finished OR (Status == Finished AND FinishedAt > WeekStart))
-    // Since we don't have a dedicated 'finished_at', we will use 'updated_at' as a proxy if status is 'Finished'/'Completed'.
 
     const weeksToShow = 8
     const chartData = []
@@ -82,32 +87,31 @@ export default async function DashboardPage() {
         const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 })
         const weekEnd = endOfWeek(subWeeks(now, i), { weekStartsOn: 1 })
 
-        // Count active contracts in this window
+        // Count ONGOING contracts in this window
         const activeCount = allContracts.filter(c => {
             if (!c.created_at) return false
             const createdDate = new Date(c.created_at)
-            // Must be created before the end of the week
+
+            // It must have been created before the end of the week
             if (createdDate > weekEnd) return false
 
-            // If currently active (not finished), it counts
-            if (c.status !== 'Finished' && c.status !== 'Completed') return true
+            // Logic:
+            // It contributes to load if it was "alive" (Ongoing) during this week.
+            // Start < WeekEnd AND End > WeekStart.
+            // Start = CreatedAt.
+            // End = UpdatedAt (if status is Active/Finished) OR Now (if still Ongoing).
 
-            // If finished, check if it was finished AFTER the week started
-            // Assuming updated_at ~ finished_at for completed contracts
-            if (c.status === 'Finished' || c.status === 'Completed') {
-                // If we don't have updated_at, assume it's still active or edge case. 
-                // But we didn't fetch updated_at in the top query. Let's fix that.
-                // For now, simpler logic: if created <= weekEnd AND status is NOT Finished, count it.
-                // This misses contracts that WERE active then but finished now.
-                // To fix, we need updated_at.
-                return true // Placeholder: This logic overcounts finished contracts as always active. 
-                // Realistically, to get historical active count, we need a history table or reliable dates.
-                // Given the constraints, "Ongoing contracts" usually implies current snapshot or "New contracts".
-                // BUT user said "Weekly load (calculate ongoing contract per week)".
-                // I will stick to "Created per week" or "Active during week" approximation.
-                // Let's refine the query to get updated_at to improve this.
+            let endDate = now
+            if (!isOngoing(c.status) && c.updated_at) {
+                // If it's Active/Finished, we assume updated_at is when it stopped being "Ongoing"
+                endDate = new Date(c.updated_at)
             }
-            return false
+
+            // Standard overlap check: (Start <= WindowEnd) AND (End >= WindowStart)
+            // We already checked Created (Start) <= WeekEnd above.
+            // So we just need: End >= WeekStart.
+
+            return endDate >= weekStart
         }).length
 
         // Improved Logic requiring updated_at.

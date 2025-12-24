@@ -1,11 +1,14 @@
 "use client"
 
+import { useQueryClient } from "@tanstack/react-query"
+
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreVertical, Eye, FileEdit, AlertTriangle, Search } from "lucide-react"
@@ -14,7 +17,7 @@ import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { toast } from "sonner"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { Input } from "@/components/ui/input"
-import { getVersionBadgeColor } from "@/lib/contractUtils"
+import { getVersionBadgeColor, getDivisionColor, formatCurrency } from "@/lib/contractUtils"
 import { ContractService } from "@/services/contractService"
 
 interface ExpiringContract {
@@ -29,19 +32,27 @@ interface ExpiringContract {
     user_name: string | null
     contract_value: number
     cost_savings: number
+    division: string | null
 }
+
+import { useQuery } from "@tanstack/react-query"
+
+// ... imports
+
+// ... interface
 
 export function ExpiringContractsTable() {
     const router = useRouter()
     const supabase = createClientComponentClient()
-    const [contracts, setContracts] = useState<ExpiringContract[]>([])
+    const queryClient = useQueryClient()
+    // const [contracts, setContracts] = useState<ExpiringContract[]>([]) // Removed
     const [filteredContracts, setFilteredContracts] = useState<ExpiringContract[]>([])
-    const [loading, setLoading] = useState(true)
+    // const [loading, setLoading] = useState(true) // Removed
     const [criticalCount, setCriticalCount] = useState(0)
-    const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set())
+    // const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set()) // Removed/Replaced
     const [searchTerm, setSearchTerm] = useState("")
 
-    // Amendment State
+    // ... other states
     const [isAmendModalOpen, setIsAmendModalOpen] = useState(false)
     const [selectedContractForAmend, setSelectedContractForAmend] = useState<ExpiringContract | null>(null)
     const [isCreatingAmendment, setIsCreatingAmendment] = useState(false)
@@ -55,41 +66,10 @@ export function ExpiringContractsTable() {
     const [finishRemarks, setFinishRemarks] = useState("")
     const [finishReferenceNumber, setFinishReferenceNumber] = useState("")
 
-    useEffect(() => {
-        fetchExpiringContracts()
-        checkAmendmentsInProgress()
-    }, [])
-
-    useEffect(() => {
-        if (!searchTerm) {
-            setFilteredContracts(contracts)
-        } else {
-            const lowerComp = searchTerm.toLowerCase()
-            setFilteredContracts(contracts.filter(c =>
-                c.title?.toLowerCase().includes(lowerComp) ||
-                c.contract_number?.toLowerCase().includes(lowerComp) ||
-                c.appointed_vendor?.toLowerCase().includes(lowerComp) ||
-                c.user_name?.toLowerCase().includes(lowerComp)
-            ))
-        }
-    }, [searchTerm, contracts])
-
-    const checkAmendmentsInProgress = async () => {
-        const { data } = await supabase
-            .from('contract_versions')
-            .select('parent_id')
-            .eq('status', 'On Progress')
-            .not('parent_id', 'is', null)
-
-        if (data) {
-            const parentIds = new Set(data.map(d => d.parent_id as string))
-            setContractsWithAmendment(parentIds)
-        }
-    }
-
-    const fetchExpiringContracts = async () => {
-        setLoading(true)
-        try {
+    // REACT QUERY: Fetch Expiring Contracts
+    const { data: contracts = [], isLoading: loading } = useQuery({
+        queryKey: ['expiringContracts'],
+        queryFn: async () => {
             const today = new Date()
             const futureDate = new Date()
             futureDate.setDate(today.getDate() + 90)
@@ -106,7 +86,9 @@ export function ExpiringContractsTable() {
                     parent_id,
                     final_contract_amount,
                     cost_saving,
-                    parent:contract_parents(contract_number, created_by, profiles:created_by (full_name))
+                    division,
+                    parent:contract_parents(contract_number, created_by, profiles:created_by (full_name)),
+                    contract_vendors(vendor_name, is_appointed)
                 `)
                 .eq('status', 'Active')
                 .lte('expiry_date', futureDate.toISOString())
@@ -114,35 +96,68 @@ export function ExpiringContractsTable() {
 
             if (error) throw error
 
-            const formatted = (data || []).map((c: any) => ({
-                id: c.id,
-                title: c.title,
-                contract_number: c.parent?.contract_number || '-',
-                appointed_vendor: c.appointed_vendor,
-                effective_date: c.effective_date,
-                expiry_date: c.expiry_date,
-                version: c.version,
-                parent_id: c.parent_id,
-                user_name: c.parent?.profiles?.full_name,
-                contract_value: c.final_contract_amount || 0,
-                cost_savings: c.cost_saving || 0
-            }))
+            return (data || []).map((c: any) => {
+                const vendors = c.contract_vendors || []
+                const appointed = vendors.find((v: any) => v.is_appointed)?.vendor_name
 
-            setContracts(formatted)
-            setFilteredContracts(formatted)
-
-            const critical = formatted.filter((c: any) => {
-                const days = differenceInDays(new Date(c.expiry_date), today)
-                return days < 30
-            }).length
-            setCriticalCount(critical)
-        } catch (error: any) {
-            console.error('Error fetching contracts:', error)
-            toast.error('Failed to load contracts', { description: error.message })
-        } finally {
-            setLoading(false)
+                return {
+                    id: c.id,
+                    title: c.title,
+                    contract_number: c.parent?.contract_number || '-',
+                    appointed_vendor: appointed || null,
+                    effective_date: c.effective_date,
+                    expiry_date: c.expiry_date,
+                    version: c.version,
+                    parent_id: c.parent_id,
+                    user_name: c.parent?.profiles?.full_name,
+                    contract_value: c.final_contract_amount || 0,
+                    cost_savings: c.cost_saving || 0,
+                    division: c.division
+                }
+            })
         }
-    }
+    })
+
+    // REACT QUERY: Check Amendments
+    const { data: contractsWithAmendment = new Set() } = useQuery({
+        queryKey: ['amendmentsInProgress'],
+        queryFn: async () => {
+            const { data } = await supabase
+                .from('contract_versions')
+                .select('parent_id')
+                .eq('status', 'On Progress')
+                .not('parent_id', 'is', null)
+
+            if (data) {
+                return new Set(data.map(d => d.parent_id as string))
+            }
+            return new Set<string>()
+        }
+    })
+
+    useEffect(() => {
+        if (!searchTerm) {
+            setFilteredContracts(contracts)
+        } else {
+            const lowerComp = searchTerm.toLowerCase()
+            setFilteredContracts(contracts.filter(c =>
+                c.title?.toLowerCase().includes(lowerComp) ||
+                c.contract_number?.toLowerCase().includes(lowerComp) ||
+                c.appointed_vendor?.toLowerCase().includes(lowerComp) ||
+                c.user_name?.toLowerCase().includes(lowerComp)
+            ))
+        }
+
+        // Calculate critical count based on fetched contracts
+        const today = new Date()
+        const critical = contracts.filter((c: any) => {
+            const days = differenceInDays(new Date(c.expiry_date), today)
+            return days < 30
+        }).length
+        setCriticalCount(critical)
+
+    }, [searchTerm, contracts])
+
 
     const calculateDaysUntilExpiry = (expiryDate: string) => {
         const today = new Date()
@@ -299,7 +314,9 @@ export function ExpiringContractsTable() {
             } as any)
 
             setIsFinishModalOpen(false)
-            fetchExpiringContracts()
+            setIsFinishModalOpen(false)
+            // Invalidate query to refetch
+            queryClient.invalidateQueries({ queryKey: ['expiringContracts'] })
             toast.success("Contract updated/finished successfully!")
 
         } catch (error: any) {
@@ -396,6 +413,7 @@ export function ExpiringContractsTable() {
                                 <TableRow>
                                     <TableHead>Contract Name</TableHead>
                                     <TableHead>PIC</TableHead>
+                                    <TableHead>Division</TableHead>
                                     <TableHead>Vendor</TableHead>
                                     <TableHead>Contract Value</TableHead>
                                     <TableHead>Cost Saving</TableHead>
@@ -429,12 +447,22 @@ export function ExpiringContractsTable() {
                                                 </div>
                                             </TableCell>
                                             <TableCell>{contract.user_name || '-'}</TableCell>
+                                            <TableCell>
+                                                {contract.division && (
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className={`text-[10px] px-1 py-0 h-5 border ${getDivisionColor(contract.division)}`}
+                                                    >
+                                                        {contract.division}
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
                                             <TableCell>{contract.appointed_vendor || '-'}</TableCell>
                                             <TableCell>
-                                                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(contract.contract_value)}
+                                                {contract.contract_value > 0 ? formatCurrency(contract.contract_value) : "-"}
                                             </TableCell>
                                             <TableCell>
-                                                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(contract.cost_savings)}
+                                                {contract.cost_savings > 0 ? formatCurrency(contract.cost_savings) : "-"}
                                             </TableCell>
                                             <TableCell>{contract.effective_date ? format(new Date(contract.effective_date), 'dd MMM yyyy') : '-'}</TableCell>
                                             <TableCell>
@@ -443,9 +471,7 @@ export function ExpiringContractsTable() {
                                                 </span>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant={expiryInfo.variant}>
-                                                    {expiryInfo.text}
-                                                </Badge>
+                                                <ContractStatusBadge status={expiryInfo.text} />
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant="outline" className={getVersionBadgeColor(contract.version)}>

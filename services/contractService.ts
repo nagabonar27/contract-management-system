@@ -209,30 +209,8 @@ export class ContractService {
 
             if (versionError) throw versionError;
 
-            // 3. Seed Default Bid Agenda
-            const defaultSteps = [
-                'Drafting',
-                'Internal Review',
-                'Legal Review',
-                'Vendor Selection',
-                'Appointed Vendor',
-                'Internal Contract Signature Process',
-                'Vendor Contract Signature Process'
-            ];
-
-            const agendaPayload = defaultSteps.map((step, index) => ({
-                contract_id: versionData.id,
-                step_name: step,
-                status: index === 0 ? 'On Progress' : 'Pending', // First step active
-                start_date: index === 0 ? new Date().toISOString() : null,
-                created_by: contractData.created_by
-            }));
-
-            const { error: agendaError } = await client
-                .from('contract_bid_agenda')
-                .insert(agendaPayload);
-
-            if (agendaError) console.error("Error seeding agenda:", agendaError);
+            // 3. No Default Agenda Seeding - User requested empty start
+            // (Removed lines 213-235)
 
             await this.logChange(client, versionData.id, contractData.created_by || 'system', 'CREATE', versionPayload);
 
@@ -369,8 +347,33 @@ export class ContractService {
     }
 
     static async deleteContract(client: SupabaseClient, id: string): Promise<void> {
-        const { error } = await client.from('contract_versions').delete().eq('id', id);
-        if (error) throw error;
+        // 1. Get Parent ID before deleting
+        const { data: version } = await client
+            .from('contract_versions')
+            .select('parent_id')
+            .eq('id', id)
+            .single();
+
+        if (!version) return; // Already gone
+
+        // 2. Delete Version (Cascades to Agenda, Vendors, etc.)
+        const { error: deleteError } = await client
+            .from('contract_versions')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) throw deleteError;
+
+        // 3. Cleanup Parent if no versions left
+        // Check if other versions exist
+        const { count } = await client
+            .from('contract_versions')
+            .select('*', { count: 'exact', head: true })
+            .eq('parent_id', version.parent_id);
+
+        if (count === 0) {
+            await client.from('contract_parents').delete().eq('id', version.parent_id);
+        }
     }
 
     static async getActiveContracts(client: SupabaseClient): Promise<Contract[]> {

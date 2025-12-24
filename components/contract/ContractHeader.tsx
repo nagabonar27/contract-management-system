@@ -8,6 +8,7 @@ import { Combobox, Option } from "@/components/ui/shared/combobox"
 import { FilePenLine, FileCheck } from "lucide-react"
 import { getDivisionColor } from "@/lib/contractUtils"
 import { ContractBadges } from "@/components/contract/ContractBadges"
+import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
 
 interface ContractHeaderProps {
     contract: {
@@ -65,6 +66,7 @@ interface ContractHeaderProps {
     isAnticipated?: boolean
     onStatusChange?: (field: 'is_cr' | 'is_on_hold' | 'is_anticipated', value: boolean) => void
     hasAmendmentInProgress?: boolean
+    appointedVendorName?: string | null
 }
 
 export function ContractHeader({
@@ -91,13 +93,8 @@ export function ContractHeader({
     hasAmendmentInProgress = false,
     userOptions = [],
     userPosition = null,
+    appointedVendorName
 }: ContractHeaderProps) {
-    const getBadgeVariant = () => {
-        if (isActive) return 'default'
-        if (displayStatus === 'Expired') return 'destructive'
-        return 'secondary'
-    }
-
     /* getDivisionColor now imported from @/lib/contractUtils */
 
     // Logic: Amendment if version > 1 OR explicit type/title
@@ -123,9 +120,7 @@ export function ContractHeader({
                             isAnticipated={isAnticipated}
                         />
 
-                        <Badge variant={getBadgeVariant()}>
-                            {displayStatus}
-                        </Badge>
+                        <ContractStatusBadge status={displayStatus} />
                     </CardTitle>
                     <div className="text-sm text-muted-foreground space-y-1">
                         <div className="flex gap-4">
@@ -414,11 +409,11 @@ export function ContractHeader({
                                 <span className="font-medium">{contract.expiry_date}</span>
                             </div>
                         )}
-                        {(contract?.appointed_vendor || contract?.vendor || contract?.vendor_2 || contract?.vendor_3) && (
+                        {(appointedVendorName || [contract?.vendor, contract?.vendor_2, contract?.vendor_3].filter(Boolean).length > 0) && (
                             <div className="col-span-2">
                                 <span className="block text-muted-foreground">Appointed Vendor</span>
                                 <span className="font-medium">
-                                    {contract.appointed_vendor || [contract.vendor, contract.vendor_2, contract.vendor_3].filter(Boolean).join(", ")}
+                                    {appointedVendorName || [contract?.vendor, contract?.vendor_2, contract?.vendor_3].filter(Boolean).join(", ")}
                                 </span>
                             </div>
                         )}

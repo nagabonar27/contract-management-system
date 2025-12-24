@@ -123,8 +123,29 @@ export default function ContractDetailPage() {
     const displayStatus = getContractDisplayStatus(contract?.status || "", contract?.expiry_date || null, agendaList)
     const isActive = displayStatus === 'Active' || displayStatus === 'Completed' || displayStatus === 'Expired'
     const isReadyToFinalize = displayStatus === 'Ready to Finalize'
-    // Derive Appointed Vendor from Agenda (if not saved in DB yet)
-    // const derivedAppointedVendor = agendaList.find(item => item.step_name === "Appointed Vendor")?.remarks || contract?.appointed_vendor
+
+    // Derive Appointed Vendor from Vendor List (Single Source of Truth)
+    // We prioritize the vendor explicitly marked as appointed in the vendors table.
+    useEffect(() => {
+        if (vendorList.length > 0) {
+            const appointed = vendorList.find(v => v.is_appointed)
+            if (appointed) {
+                setAppointedVendorName(appointed.vendor_name)
+            } else {
+                // Keep strictly synced with vendor flags
+                // If we are editing, we might have a selection pending save, but for display, 
+                // if no vendor is appointed in DB (vendorList), and we are not editing, it should be null.
+                // However, setAppointedVendorName is also the input state. 
+                // We should validly reset it if we just fetched fresh data and nothing is appointed.
+                // But we must be careful not to overwrite user input during edit.
+                // Since this runs on [vendorList, contract], it runs on fetch.
+                if (!isEditingAgenda) {
+                    setAppointedVendorName(null)
+                }
+            }
+        }
+    }, [vendorList, isEditingAgenda])
+
 
     // --- DATA LOADING ---
     useEffect(() => {
@@ -141,7 +162,15 @@ export default function ContractDetailPage() {
     const fetchAgenda = async () => {
         const { data } = await supabase.from('contract_bid_agenda').select('*').eq('contract_id', id)
         if (data) {
-            const sorted = data.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            // Sort by earliest start date. If null, put at end (or rely on created_at)
+            const sorted = data.sort((a, b) => {
+                if (a.start_date && b.start_date) {
+                    return new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
+                }
+                if (a.start_date) return -1
+                if (b.start_date) return 1
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            })
             setAgendaList(sorted)
         }
     }
@@ -155,7 +184,14 @@ export default function ContractDetailPage() {
             `)
             .eq('contract_id', id)
             .order('created_at', { ascending: true })
-        if (data) setVendorList(data)
+        if (data) {
+            setVendorList(data)
+            // Sync appointed vendor name from the fetched list
+            const appointed = data.find((v: any) => v.is_appointed)
+            if (appointed) {
+                setAppointedVendorName(appointed.vendor_name)
+            }
+        }
     }
 
     // MAIN FETCH
@@ -199,7 +235,7 @@ export default function ContractDetailPage() {
                 }
 
                 setContract(mappedContract)
-                setAppointedVendorName(mappedContract.appointed_vendor) // Init local state
+                // setAppointedVendorName(mappedContract.appointed_vendor) // MOVED to verify against vendor list first
 
                 // Finalize Modal Defaults
                 setFinalizeContractNumber(mappedContract.contract_number || "")
@@ -291,10 +327,8 @@ export default function ContractDetailPage() {
             const typeOption = typeOptions.find(o => o.label === editForm.contract_type_name) || typeOptions.find(o => o.value === editForm.contract_type_name)
             if (typeOption) updates.contract_type_id = parseInt(typeOption.value)
 
-            // Appointed Vendor sync
-            if (appointedVendorName !== contract.appointed_vendor) {
-                updates.appointed_vendor = appointedVendorName
-            }
+            // NO LONGER UPDATING appointed_vendor HERE
+            // It is managed via Agenda / Vendor Selection solely.
 
             const updated = await ContractService.updateContract(supabase, id, updates)
 
@@ -340,14 +374,40 @@ export default function ContractDetailPage() {
         }
 
         if (confirm("Are you sure you want to delete this step? This will also delete associated vendor dates.")) {
+            const stepToDelete = agendaList.find(s => s.id === stepId)
+
             // Optimistic update
             setAgendaList(prev => prev.filter(s => s.id !== stepId))
+
+            // Manual Cascade: Delete dependencies
+            await supabase.from('vendor_step_dates').delete().eq('agenda_step_id', stepId)
+            await supabase.from('contract_vendors').delete().eq('agenda_step_id', stepId)
+
+            // If deleting "Appointed Vendor" step, clear the appointed vendor from contract
+            if (stepToDelete?.step_name === "Appointed Vendor") {
+                // 1. Clear is_appointed flag on ALL vendors for this contract
+                await supabase.from('contract_vendors')
+                    .update({ is_appointed: false })
+                    .eq('contract_id', id)
+
+                // Update local state
+                // setContract(prev => prev ? { ...prev, appointed_vendor: null } : null) // Deprecated
+                setAppointedVendorName(null)
+                // Also update local vendor list to clear flags
+                setVendorList(prev => prev.map(v => ({ ...v, is_appointed: false })))
+            }
+
+            // 3. Delete the Step
             const { error } = await supabase.from('contract_bid_agenda').delete().eq('id', stepId)
+
             if (error) {
                 toast.error("Failed to delete step")
                 fetchAgenda() // Revert
+                fetchVendors() // Revert vendors too
             } else {
                 toast.success("Step deleted")
+                // Also update local vendor list to remove deleted vendors if any
+                setVendorList(prev => prev.filter(v => v.agenda_step_id !== stepId))
             }
         }
     }
@@ -385,6 +445,8 @@ export default function ContractDetailPage() {
             kyc_result: null,
             kyc_note: null,
             tech_eval_note: null,
+            tech_eval_score: null,
+            tech_eval_remarks: null,
             price_note: null,
             revised_price_note: null,
             created_at: new Date().toISOString(),
@@ -415,9 +477,17 @@ export default function ContractDetailPage() {
     // 7. Save All (Agenda + Vendors)
     const handleSaveAll = async () => {
         setIsSavingAgenda(true)
+        // Map to track temp IDs to real IDs for Agenda Steps
+        const stepIdMap: Record<string, string> = {}
+        // Map to track temp IDs to real IDs for Vendors
+        const vendorIdMap: Record<string, string> = {}
+
         try {
             // A. Save Agenda Items
             for (const item of agendaList) {
+                const isTemp = item.id.startsWith('temp-')
+                const originalId = item.id
+
                 const payload = {
                     contract_id: id,
                     step_name: item.step_name,
@@ -427,58 +497,84 @@ export default function ContractDetailPage() {
                     remarks: item.remarks || null,
                 }
 
-                if (item.id.startsWith('temp-')) {
+                if (isTemp) {
                     const { data, error } = await supabase.from('contract_bid_agenda').insert(payload).select().single()
                     if (!error && data) {
-                        // Update local ID to prevent re-insert
+                        stepIdMap[originalId] = data.id
+                        // Update local object to prevent re-insert if we save again without reload
                         item.id = data.id
+                    } else if (error) {
+                        throw error
                     }
                 } else {
-                    await supabase.from('contract_bid_agenda').update(payload).eq('id', item.id)
+                    const { error } = await supabase.from('contract_bid_agenda').update(payload).eq('id', item.id)
+                    if (error) throw error
                 }
             }
 
             // B. Save Vendors
             // Filter vendors that are linked to finding steps
             for (const v of vendorList) {
+                const isTemp = v.id.startsWith('temp-')
+                const originalVendorId = v.id
+
+                // Resolve Agenda Step ID (Handle temp IDs)
+                const resolvedStepId = (v.agenda_step_id && v.agenda_step_id.startsWith('temp-'))
+                    ? stepIdMap[v.agenda_step_id] || v.agenda_step_id // Use mapped or original (if somehow failed/not found)
+                    : v.agenda_step_id
+
+                // If resolvedStepId is still a temp ID (mapping failed), skip or error?
+                // It will fail DB constraint, caught by catch block.
+
                 const payload = {
                     contract_id: id,
                     vendor_name: v.vendor_name,
-                    agenda_step_id: v.agenda_step_id || null, // Important linkage
+                    agenda_step_id: resolvedStepId || null,
                     kyc_result: v.kyc_result,
                     kyc_note: v.kyc_note,
                     tech_eval_note: v.tech_eval_note,
+                    tech_eval_score: v.tech_eval_score,
+                    tech_eval_remarks: v.tech_eval_remarks,
                     price_note: v.price_note,
-                    revised_price_note: v.revised_price_note
+                    revised_price_note: v.revised_price_note,
+                    is_appointed: v.vendor_name === appointedVendorName
                 }
 
-                if (v.id.startsWith('temp-')) {
+                if (isTemp) {
                     const { data, error } = await supabase.from('contract_vendors').insert(payload).select().single()
                     if (!error && data) {
-                        // We need to update ID in step_dates if any dates were added for this temp vendor... complex.
-                        // But simplify: assume user adds vendor, saves, THEN adds dates. 
-                        // Or handling deep nested save:
-                        const oldId = v.id
+                        vendorIdMap[originalVendorId] = data.id
                         v.id = data.id
-                        // If we had pending step_dates for this temp vendor, we must update their vendor_id now?
-                        // Ideally we save vendor first.
+                    } else if (error) {
+                        throw error
                     }
                 } else {
-                    await supabase.from('contract_vendors').update(payload).eq('id', v.id)
+                    const { error } = await supabase.from('contract_vendors').update(payload).eq('id', v.id)
+                    if (error) throw error
                 }
 
                 // C. Save Vendor Step Dates
                 if (v.step_dates) {
                     for (const sd of v.step_dates) {
+                        // Resolve Vendor ID (Use mapped ID if the vendor was just created)
+                        // Note: v.id is already updated above in the object reference.
+                        const resolvedVendorId = v.id
+
+                        // Resolve Agenda Step ID for the date entry
+                        const resolvedStepIdForDate = (sd.agenda_step_id && sd.agenda_step_id.startsWith('temp-'))
+                            ? stepIdMap[sd.agenda_step_id] || sd.agenda_step_id
+                            : sd.agenda_step_id
+
                         const sdPayload = {
-                            vendor_id: v.id, // Now real ID
-                            agenda_step_id: sd.agenda_step_id,
+                            vendor_id: resolvedVendorId,
+                            agenda_step_id: resolvedStepIdForDate,
                             start_date: sd.start_date || null,
                             end_date: sd.end_date || null,
                             remarks: sd.remarks
                         }
 
                         if (sd.id.startsWith('temp-')) {
+                            // We don't really need to track step date IDs for dependencies
                             await supabase.from('vendor_step_dates').insert(sdPayload)
                         } else {
                             await supabase.from('vendor_step_dates').update(sdPayload).eq('id', sd.id)
@@ -487,10 +583,10 @@ export default function ContractDetailPage() {
                 }
             }
 
-            // D. Update Appointed Vendor on Contract if changed
-            if (appointedVendorName !== contract?.appointed_vendor) {
-                await supabase.from('contract_versions').update({ appointed_vendor: appointedVendorName }).eq('id', id)
-            }
+            // D. DEPRECATED: We rely on contract_vendors.is_appointed now
+            // if (appointedVendorName !== contract?.appointed_vendor) {
+            //     await supabase.from('contract_versions').update({ appointed_vendor: appointedVendorName }).eq('id', id)
+            // }
 
             toast.success("All changes saved")
             setIsEditingAgenda(false)
@@ -498,14 +594,56 @@ export default function ContractDetailPage() {
             fetchAgenda()
             fetchVendors()
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Save failed:", error)
-            toast.error("Failed to save changes")
+            toast.error("Failed to save changes", { description: error.message })
         } finally {
             setIsSavingAgenda(false)
         }
     }
 
+
+    // 8. Finalize Handler
+    const handleFinalize = async () => {
+        if (!contract) return
+
+        try {
+            const updates: any = {
+                contract_number: finalizeContractNumber,
+                effective_date: finalizeEffectiveDate,
+                expiry_date: finalizeExpiryDate,
+                contract_summary: finalizeContractSummary,
+            }
+
+            // Both regular finish and amendment finalization should result in an 'Active' contract
+            updates.status = 'Active'
+
+            await ContractService.updateContract(supabase, id, updates)
+
+            toast.success(finalizeMode === 'finish' ? "Contract finished!" : "Amendment finalized!")
+            setShowFinalizeModal(false)
+
+            // Refresh
+            window.location.reload()
+
+        } catch (error: any) {
+            console.error("Finalize error:", error)
+            toast.error("Failed to finalize", { description: error.message })
+        }
+    }
+
+    // 9. Extend Handler
+    const handleExtend = async (newDate: string) => {
+        try {
+            await ContractService.updateContract(supabase, id, { expiry_date: newDate } as any)
+            toast.success("Contract extended")
+            setShowExtendModal(false)
+            setContract(prev => prev ? { ...prev, expiry_date: newDate } : null)
+        } catch (error: any) {
+            console.error("Extend error:", error)
+            toast.error("Failed to extend", { description: error.message })
+        }
+    }
 
     return (
         <div className="flex-1 space-y-4 p-8 pt-6">
@@ -536,6 +674,7 @@ export default function ContractDetailPage() {
                         typeOptions={typeOptions}
                         userOptions={userOptions}
                         userPosition={userPosition}
+                        appointedVendorName={appointedVendorName}
                         onEditToggle={() => setIsEditingHeader(!isEditingHeader)}
                         onFormChange={(updates) => setEditForm(prev => ({ ...prev, ...updates }))}
                         onSave={handleSaveHeader}
@@ -587,35 +726,32 @@ export default function ContractDetailPage() {
                     {/* GANTT CHART */}
                     <GanttChart
                         agendaItems={agendaList}
-                        vendorStepDates={vendorList.flatMap(v => v.step_dates || [])}
-                        vendors={vendorList}
+                        vendorItems={vendorList}
                     />
 
                     {/* MODALS */}
                     <FinalizeContractModal
                         open={showFinalizeModal}
                         onOpenChange={setShowFinalizeModal}
-                        mode={finalizeMode}
-                        contractId={id}
                         contractNumber={finalizeContractNumber}
                         effectiveDate={finalizeEffectiveDate}
                         expiryDate={finalizeExpiryDate}
                         contractSummary={finalizeContractSummary}
-                        referenceNumber={finalizeReferenceNumber}
-                        onSuccess={() => {
-                            setShowFinalizeModal(false)
-                            router.refresh()
-                        }}
+                        onContractNumberChange={setFinalizeContractNumber}
+                        onEffectiveDateChange={setFinalizeEffectiveDate}
+                        onExpiryDateChange={setFinalizeExpiryDate}
+                        onContractSummaryChange={setFinalizeContractSummary}
+                        onFinalize={handleFinalize}
+                        isAmendment={finalizeMode === 'amend'}
+                        referenceContractNumber={finalizeReferenceNumber}
+                        onReferenceNumberChange={setFinalizeReferenceNumber}
                     />
 
                     <ExtendContractModal
                         open={showExtendModal}
                         onOpenChange={setShowExtendModal}
-                        contractId={id}
                         currentExpiryDate={contract?.expiry_date || ""}
-                        onSuccess={() => {
-                            setShowExtendModal(false)
-                        }}
+                        onExtend={handleExtend}
                     />
                 </div>
             )}

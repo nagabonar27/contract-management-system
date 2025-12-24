@@ -6,13 +6,14 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreVertical, Eye, FileEdit } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { toast } from 'sonner'
-import { calculatePriceDifference, formatCurrency, getVersionBadgeColor } from "@/lib/contractUtils"
+import { calculatePriceDifference, formatCurrency, getVersionBadgeColor, getDivisionColor } from "@/lib/contractUtils"
 import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
 import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
 import { Input } from "@/components/ui/input"
@@ -29,6 +30,7 @@ interface ActiveContract {
     expiry_date: string | null
     version: number
     parent_contract_id: string | null
+    division?: string
     is_cr: boolean
     is_on_hold: boolean
     is_anticipated: boolean
@@ -45,12 +47,16 @@ interface ActiveContract {
     }[]
 }
 
+import { useQuery } from "@tanstack/react-query"
+
+
+
 export function ActiveContractsTable() {
     const router = useRouter()
     const supabase = createClientComponentClient()
-    const [contracts, setContracts] = useState<ActiveContract[]>([])
+    // const [contracts, setContracts] = useState<ActiveContract[]>([]) // Removed
     const [filteredContracts, setFilteredContracts] = useState<ActiveContract[]>([])
-    const [loading, setLoading] = useState(true)
+    // const [loading, setLoading] = useState(true) // Removed
     const [activeFilter, setActiveFilter] = useState("all")
     const [searchTerm, setSearchTerm] = useState("")
     const [contractsWithAmendment, setContractsWithAmendment] = useState<Set<string>>(new Set())
@@ -69,19 +75,10 @@ export function ActiveContractsTable() {
     const [finishRemarks, setFinishRemarks] = useState("")
     const [finishReferenceNumber, setFinishReferenceNumber] = useState("")
 
-    // ... useEffects
-
-    useEffect(() => {
-        applyFilter(activeFilter, searchTerm)
-    }, [contracts, activeFilter, searchTerm])
-
-    useEffect(() => {
-        fetchContracts()
-    }, [])
-
-    const fetchContracts = async () => {
-        setLoading(true)
-        try {
+    // REACT QUERY
+    const { data: contracts = [], isLoading: loading, refetch } = useQuery({
+        queryKey: ['activeContracts'],
+        queryFn: async () => {
             // UPDATED: Query 'contract_versions' + join 'contract_parents'
             const { data, error } = await supabase
                 .from('contract_versions')
@@ -94,6 +91,7 @@ export function ActiveContractsTable() {
                     expiry_date, 
                     version, 
                     parent_id,
+                    division,
                     is_cr,
                     is_on_hold,
                     is_anticipated,
@@ -120,7 +118,8 @@ export function ActiveContractsTable() {
                     contract_number: parent.contract_number, // From Parent
                     user_name: parent.profiles?.full_name, // From Parent
                     parent_contract_id: c.parent_id, // Map ID
-                    contract_vendors: c.contract_vendors || []
+                    contract_vendors: c.contract_vendors || [],
+                    division: c.division
                 }
 
                 // Keep the mock logic strict
@@ -137,14 +136,15 @@ export function ActiveContractsTable() {
                 return mapped
             })
 
-            setContracts(enrichedData)
-        } catch (error: any) {
-            console.error('Error fetching contracts:', error)
-            toast.error('Failed to load contracts', { description: error.message })
-        } finally {
-            setLoading(false)
+            return enrichedData
         }
-    }
+    })
+
+    // Removed useEffect for fetchContracts
+
+    useEffect(() => {
+        applyFilter(activeFilter, searchTerm)
+    }, [contracts, activeFilter, searchTerm])
 
     const applyFilter = (filter: string, search: string) => {
         let filtered = contracts
@@ -260,7 +260,7 @@ export function ActiveContractsTable() {
                     division: original.division,
                     department: original.department,
                     category: original.category,
-                    contract_summary: `Amendment of ${original.parent?.contract_number}`,
+                    contract_summary: `Amendment of ${Array.isArray(original.parent) ? (original.parent as any)[0]?.contract_number : (original.parent as any)?.contract_number}`,
                     effective_date: original.effective_date,
                     expiry_date: original.expiry_date,
                     // Store changes in logs later
@@ -324,6 +324,7 @@ export function ActiveContractsTable() {
                                 <TableRow>
                                     <TableHead>Contract Name</TableHead>
                                     <TableHead>PIC</TableHead>
+                                    <TableHead>Division</TableHead>
                                     <TableHead>Vendor</TableHead>
                                     <TableHead>Contract Value</TableHead>
                                     <TableHead>Cost Saving</TableHead>
@@ -337,11 +338,11 @@ export function ActiveContractsTable() {
                             <TableBody>
                                 {loading ? (
                                     <TableRow>
-                                        <TableCell colSpan={10} className="h-24 text-center">Loading...</TableCell>
+                                        <TableCell colSpan={11} className="h-24 text-center">Loading...</TableCell>
                                     </TableRow>
                                 ) : filteredContracts.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={10} className="h-24 text-center">
+                                        <TableCell colSpan={11} className="h-24 text-center">
                                             No contracts found
                                         </TableCell>
                                     </TableRow>
@@ -381,10 +382,21 @@ export function ActiveContractsTable() {
                                                 </TableCell>
                                                 <TableCell>{contract.user_name || '-'}</TableCell>
                                                 <TableCell>
+                                                    {contract.division && (
+                                                        <Badge
+                                                            variant="secondary"
+                                                            className={`text-[10px] px-1 py-0 h-5 border ${getDivisionColor(contract.division)}`}
+                                                        >
+                                                            {contract.division}
+                                                        </Badge>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
                                                     {(() => {
-                                                        const appointed = contract.contract_vendors.find(v => v.is_appointed)
-                                                        const agendaVendor = contract.contract_bid_agenda?.find(a => a.step_name === "Appointed Vendor")?.remarks
-                                                        return appointed?.vendor_name || contract.appointed_vendor || agendaVendor || '-'
+                                                        const vendors = contract.contract_vendors || []
+                                                        const appointed = vendors.find(v => v.is_appointed)
+                                                        // Fallback to old field only if no vendor is flagged as appointed
+                                                        return appointed?.vendor_name || '-'
                                                     })()}
                                                 </TableCell>
 
@@ -424,9 +436,7 @@ export function ActiveContractsTable() {
                                                     {contract.expiry_date ? format(new Date(contract.expiry_date), 'dd MMM yyyy') : '-'}
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge variant={expiryInfo.variant}>
-                                                        {expiryInfo.text}
-                                                    </Badge>
+                                                    <ContractStatusBadge status={expiryInfo.text} />
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge variant="outline" className={getVersionBadgeColor(contract.version)}>
