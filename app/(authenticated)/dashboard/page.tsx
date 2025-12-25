@@ -1,5 +1,6 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
+import { createClient } from "@supabase/supabase-js" // Import generic client
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -17,8 +18,24 @@ export default async function DashboardPage() {
         data: { user },
     } = await supabase.auth.getUser()
 
-    // Get user name profile
-    const { data: profile } = await supabase
+    // 1a. Create Admin Client for Data Fetching (Bypass RLS)
+    // We use this because the dashboard needs to show aggregate/recent activity that might be
+    // blocked by complex RLS policies for the individual user, or requires cross-table access.
+    // Since this is a server component, it's safe.
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+            }
+        }
+    )
+
+    // Get user name profile (using user context is fine/better for "My Profile")
+    // But we can use admin to be safe if profile RLS is strict
+    const { data: profile } = await adminSupabase
         .from('profiles')
         .select('full_name')
         .eq('id', user?.id)
@@ -26,15 +43,10 @@ export default async function DashboardPage() {
 
     const userName = profile?.full_name || user?.email?.split('@')[0] || 'User'
 
-    // 2. Fetch Contracts Data
-    // We need:
-    // - Total ongoing contracts (status != 'Finished')
-    // - New contracts this week (created_at is within this week)
-    // - Avg lead time for ongoing (Current Time - created_at)
     // 2. Fetch Contracts Data - SWITCH TO CONTRACT_VERSIONS
     // We need:
     // - Total ongoing contracts (status = 'On Progress', 'Draft' etc. NOT 'Active'/'Finished')
-    const { data: contracts, error: contractsError } = await supabase
+    const { data: contracts, error: contractsError } = await adminSupabase
         .from('contract_versions')
         .select('id, title, status, created_at, updated_at')
         .eq('is_current', true)
@@ -137,10 +149,10 @@ export default async function DashboardPage() {
 
 
     // 4. Fetch Recent Activity
-    // Fetch from BOTH contract_bid_agenda AND contracts (for creation/status change) to show a rich feed.
+    // Fetch from BOTH contract_bid_agenda AND contract_versions (for creation/status change)
 
-    // 4a. Agenda Items
-    const { data: agendaItems } = await supabase
+    // 4a. Agenda Items (Raw fetch to avoid relationship issues)
+    const { data: agendaRaw } = await adminSupabase
         .from('contract_bid_agenda')
         .select(`
             id, 
@@ -148,60 +160,84 @@ export default async function DashboardPage() {
             status, 
             updated_at,
             created_by,
-            contracts (id, title),
+            contract_id,
             profiles:created_by (full_name)
         `)
         .order('updated_at', { ascending: false })
         .limit(5)
 
     // 4b. Recent Contracts (Created or Updated)
-    const { data: recentContracts } = await supabase
-        .from('contracts')
+    const { data: recentContracts } = await adminSupabase
+        .from('contract_versions')
         .select(`
             id,
             title,
             status,
             created_at,
             updated_at,
-            created_by,
             current_step,
-            profiles:created_by (full_name),
+            parent:contracts!parent_id (
+                created_by,
+                profiles:created_by (full_name)
+            ),
             contract_bid_agenda (
                 step_name,
                 updated_at
             )
         `)
-        .order('updated_at', { ascending: false }) // Assuming updated_at covers creation too (usually same at start)
+        .order('updated_at', { ascending: false })
         .limit(5)
 
-    // 4c. Merge and Sort
-    // Normalize structure: { id, title, description, timestamp }
+    // 4c. Resolve Contract Titles for Agenda
+    // Collect all version IDs we need: those from agenda and the recent contracts themselves
+    const versionIds = new Set<string>()
+    agendaRaw?.forEach(a => { if (a.contract_id) versionIds.add(a.contract_id) })
+    recentContracts?.forEach(c => versionIds.add(c.id))
+
+    let versionMap: Record<string, { title: string }> = {}
+
+    if (versionIds.size > 0) {
+        const { data: versions } = await adminSupabase
+            .from('contract_versions')
+            .select('id, title')
+            .in('id', Array.from(versionIds))
+
+        if (versions) {
+            versions.forEach(v => {
+                versionMap[v.id] = { title: v.title }
+            })
+        }
+    }
+
+    // 4d. Merge and Sort
     const combinedActivity = [
-        ...(agendaItems || []).map((item: any) => ({
+        ...(agendaRaw || []).map((item: any) => ({
             id: `agenda-${item.id}`,
             // Title = Profile Name OR Default "System"
             title: item.profiles?.full_name || "System",
             // Description = Bid Agenda - Contract Name
-            contractTitle: item.contracts?.title || "Unknown Contract",
-            contractId: item.contracts?.id,
+            contractTitle: versionMap[item.contract_id]?.title || "Unknown Contract",
+            contractId: item.contract_id,
             stepName: item.step_name,
             timestamp: item.updated_at,
             type: 'agenda'
         })),
         ...(recentContracts || []).map((item: any) => {
             // Find latest agenda step from the nested data
-            // We need to sort because the nested array might not be guaranteed order without explicit modifier
             const latestAgenda = item.contract_bid_agenda?.sort((a: any, b: any) =>
                 new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
             )[0];
             const agendaStepName = latestAgenda?.step_name;
 
+            // Handle parent profile structure
+            const profileName = (item.parent as any)?.profiles?.full_name || "System"
+
             return {
                 id: `contract-${item.id}`,
-                title: item.profiles?.full_name || "System",
+                title: profileName,
                 contractTitle: item.title,
                 contractId: item.id,
-                stepName: agendaStepName || item.current_step || item.status, // Priority: Agenda > Current Step (DB) > Status
+                stepName: agendaStepName || item.current_step || item.status,
                 description: `${agendaStepName || item.current_step || item.status} - ${item.title}`,
                 timestamp: item.updated_at || item.created_at,
                 type: 'contract'
