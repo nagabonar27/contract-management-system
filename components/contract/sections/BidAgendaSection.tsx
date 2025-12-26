@@ -125,7 +125,7 @@ export function BidAgendaSection({
             s.includes("document") ||
             s.includes("review") ||
             s.includes("negotiation") ||
-            (s.includes("vendor") && !s.includes("findings") && !s.includes("contract"))
+            (s.includes("vendor") && !s.includes("findings") && !s.includes("contract") && !s.includes("appointed"))
     }
 
     const isAppointedVendorStep = (stepName: string) => stepName.toLowerCase().trim() === "appointed vendor"
@@ -256,8 +256,8 @@ export function BidAgendaSection({
                                 {isEditingAgenda && (
                                     <div className="p-3 border-b bg-gray-50 flex items-center justify-between gap-4">
                                         <div className="flex items-center gap-2">
-                                            {(!isVendorItem && !isDependent && !isAppointed) && <span className="text-xs font-semibold text-muted-foreground mr-2">Dates:</span>}
-                                            {!isDependent && !isVendorItem && !isAppointed && (
+                                            {(!isVendorItem && !isDependent) && <span className="text-xs font-semibold text-muted-foreground mr-2">Dates:</span>}
+                                            {!isDependent && !isVendorItem && (
                                                 <DateRangePicker
                                                     className="w-[240px] bg-white border shadow-sm"
                                                     value={{
@@ -273,7 +273,9 @@ export function BidAgendaSection({
                                                     placeholder="Set Duration"
                                                 />
                                             )}
-                                            {(isVendorItem || isDependent || isAppointed) && <span className="text-xs text-muted-foreground italic">Configuration available below.</span>}
+
+                                            {(isVendorItem || isDependent) && <span className="text-xs text-muted-foreground italic">Configuration available below.</span>}
+
                                         </div>
                                         <Button
                                             size="sm"
@@ -316,10 +318,13 @@ export function BidAgendaSection({
                                 )}
 
                                 {/* Appointed Vendor */}
+
+
+
                                 {isAppointed && (
-                                    <div className="p-4 border-t bg-green-50/30">
+                                    <div className="px-4 py-3 border-t bg-slate-50/30 flex flex-col gap-2">
+                                        <Label className="text-xs text-muted-foreground  font-semibold">Appointed Vendor</Label>
                                         <div className="flex items-center gap-4">
-                                            <Label className="text-xs uppercase font-bold text-green-800">Final Appointed Vendor</Label>
                                             {isEditingAgenda ? (
                                                 <Select
                                                     value={appointedVendorName || ""}
@@ -342,30 +347,11 @@ export function BidAgendaSection({
                                                 </Badge>
                                             )}
                                         </div>
-                                        {/* Optional: Date for appointed step */}
-                                        {isEditingAgenda && (
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <span className="text-xs text-muted-foreground w-[120px]">Appointed Date:</span>
-                                                <DateRangePicker
-                                                    className="w-[240px]"
-                                                    value={{
-                                                        from: item.start_date ? parseISO(item.start_date) : undefined,
-                                                        to: item.end_date ? parseISO(item.end_date) : undefined,
-                                                    }}
-                                                    onChange={(val) => {
-                                                        const s = val?.from ? format(val.from, 'yyyy-MM-dd') : ""
-                                                        const e = val?.to ? format(val.to, 'yyyy-MM-dd') : ""
-                                                        if (s) onUpdateAgendaItem(item.id, "start_date", s)
-                                                        if (e) onUpdateAgendaItem(item.id, "end_date", e)
-                                                    }}
-                                                />
-                                            </div>
-                                        )}
                                     </div>
                                 )}
 
                                 {/* Default Remarks (if not any of the above special cases) */}
-                                {!isVendorItem && !isDependent && !isAppointed && (
+                                {!isVendorItem && !isDependent && (
                                     <div className="p-4 bg-slate-50/50 border-t flex flex-col gap-2">
                                         <Label className="text-xs text-muted-foreground uppercase font-semibold">Remarks / Outcome</Label>
                                         {isEditingAgenda ? (

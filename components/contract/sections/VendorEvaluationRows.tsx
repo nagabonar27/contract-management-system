@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Trash2, Pencil, Check, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/input-group"
 // import { ISODateInput } from "@/components/ui/iso-date-input" // Removing unused
 import { DateRangePicker, DateRange } from "@/components/DatePicker"
-import { format, parseISO } from "date-fns"
+import { format, parseISO, differenceInCalendarDays } from "date-fns"
 
 // Import types from BidAgendaSection to avoid duplication
 import type { AgendaItem, ContractVendor } from "./BidAgendaSection"
@@ -98,27 +99,44 @@ export function VendorEvaluationRows({
                     <div key={v.id} className="bg-white border border-border-light dark:border-border-dark rounded-lg shadow-sm overflow-hidden mb-3">
                         {/* Header: Vendor Name + KYC Badge */}
                         <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b border-border-light dark:border-border-dark">
-                            <div className="flex items-center gap-2">
-                                <span className="font-semibold text-sm text-slate-800 dark:text-slate-200">{v.vendor_name}</span>
-                                {isKYC && !isEditingAgenda && v.kyc_result && (
-                                    <Badge variant={v.kyc_result === 'Pass' ? 'outline' : v.kyc_result === 'Fail' ? 'destructive' : 'outline'}
-                                        className={cn("h-5 px-1.5 text-[10px]", v.kyc_result === 'Pass' && "bg-green-100 text-green-800 hover:bg-green-100 border-green-200")}
-                                    >
-                                        {v.kyc_result}
-                                    </Badge>
-                                )}
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-sm text-slate-800 dark:text-slate-200">{v.vendor_name}</span>
+                                    {isKYC && !isEditingAgenda && v.kyc_result && (
+                                        <Badge variant={v.kyc_result === 'Pass' ? 'outline' : v.kyc_result === 'Fail' ? 'destructive' : 'outline'}
+                                            className={cn("h-5 px-1.5 text-[10px]", v.kyc_result === 'Pass' && "bg-green-100 text-green-800 hover:bg-green-100 border-green-200")}
+                                        >
+                                            {v.kyc_result}
+                                        </Badge>
+                                    )}
+                                </div>
+                                {!isEditingAgenda && (() => {
+                                    const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
+                                    if (sd?.start_date && sd?.end_date) {
+                                        const s = parseISO(sd.start_date)
+                                        const e = parseISO(sd.end_date)
+                                        const dur = differenceInCalendarDays(e, s) + 1
+                                        return (
+                                            <span className="text-xs text-muted-foreground mt-0.5">
+                                                {dur} Days | {sd.start_date} - {sd.end_date}
+                                            </span>
+                                        )
+                                    }
+                                    return <span className="text-xs text-muted-foreground mt-0.5">-</span>
+                                })()}
                             </div>
                         </div>
 
                         <div className="p-4 space-y-4">
                             {/* DATES ROW */}
-                            <div className="space-y-1">
-                                <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Timeline</Label>
-                                {isEditingAgenda ? (
-                                    <div className="w-full sm:w-[300px]">
+                            {/* DATES ROW - Only show in Edit Mode (View mode in header) */}
+                            {isEditingAgenda && (
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold w-[60px] shrink-0">Dates</Label>
+                                    <div className="w-auto">
                                         {(isKYC || isClarification || isPrice || isRevisedPrice || isTechEval || isOther) && (
                                             <DateRangePicker
-                                                className="w-full"
+                                                className="w-[240px]"
                                                 value={{
                                                     from: getStepDate(v, 'start_date') ? parseISO(getStepDate(v, 'start_date')) : undefined,
                                                     to: getStepDate(v, 'end_date') ? parseISO(getStepDate(v, 'end_date')) : undefined,
@@ -140,22 +158,11 @@ export function VendorEvaluationRows({
                                             />
                                         )}
                                     </div>
-                                ) : (
-                                    <div className="text-sm">
-                                        {(() => {
-                                            const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
-                                            return (sd?.start_date || sd?.end_date) ? (
-                                                <div className="border rounded px-3 py-1.5 bg-slate-50 dark:bg-slate-800 inline-block">
-                                                    {sd.start_date || "?"} - {sd.end_date || "?"}
-                                                </div>
-                                            ) : <span className="text-muted-foreground">-</span>
-                                        })()}
-                                    </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
 
                             {/* REMARKS / SCORE / PRICE ROW */}
-                            <div className="space-y-1">
+                            <div className="flex flex-col gap-2">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
                                     {isPrice ? "Price" : (isTechEval ? "Score / Note" : "Remarks")}
                                 </Label>
@@ -253,12 +260,34 @@ export function VendorEvaluationRows({
                                                             <span>Original: IDR {formatNumber(v.price_note)}</span>
                                                         </div>
                                                     )}
+                                                    {/* Generic Remarks for Price */}
+                                                    <Textarea
+                                                        value={(() => {
+                                                            const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
+                                                            return sd?.remarks || ""
+                                                        })()}
+                                                        onChange={e => {
+                                                            const val = e.target.value
+                                                            const stepDates = v.step_dates || []
+                                                            const existingIndex = stepDates.findIndex(sd => sd.agenda_step_id === agendaItem.id)
+                                                            let updated
+                                                            if (existingIndex >= 0) {
+                                                                updated = [...stepDates]
+                                                                updated[existingIndex] = { ...updated[existingIndex], remarks: val }
+                                                            } else {
+                                                                updated = [...stepDates, { id: `temp-${Date.now()}`, vendor_id: v.id, agenda_step_id: agendaItem.id, start_date: null, end_date: null, remarks: val }]
+                                                            }
+                                                            onUpdateVendorData(v.id, 'step_dates' as any, updated)
+                                                        }}
+                                                        className="min-h-[80px] w-full text-sm bg-white mt-1"
+                                                        placeholder="Add remarks..."
+                                                    />
                                                 </div>
                                             )}
 
                                             {/* Other / Generic Steps */}
                                             {isOther && (
-                                                <Input
+                                                <Textarea
                                                     value={(() => {
                                                         const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
                                                         return sd?.remarks || ""
@@ -276,45 +305,69 @@ export function VendorEvaluationRows({
                                                         }
                                                         onUpdateVendorData(v.id, 'step_dates' as any, updated)
                                                     }}
-                                                    className="h-9 w-full text-xs bg-white"
-                                                    placeholder="Remarks..."
+                                                    className="min-h-[80px] w-full text-sm bg-white"
+                                                    placeholder="Add remarks..."
                                                 />
                                             )}
                                         </div>
                                     ) : (
                                         /* READ ONLY MODE */
-                                        <div className="h-9 flex items-center">
-                                            {isKYC ? (displayValue !== "-" ? displayValue : "") :
-                                                isTechEval ? (
-                                                    <div className="flex items-center gap-2">
-                                                        {v.tech_eval_score && <Badge variant="outline">Score: {v.tech_eval_score}</Badge>}
-                                                        <span>{v.tech_eval_note}</span>
+                                        <div className="min-h-[36px] py-1">
+                                            {isKYC ? (
+                                                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed px-1">
+                                                    {displayValue !== "-" ? displayValue : "No remarks provided."}
+                                                </p>
+                                            ) : isTechEval ? (
+                                                <div className="flex flex-col gap-2">
+                                                    {v.tech_eval_score && <Badge variant="outline" className="w-fit">Score: {v.tech_eval_score}</Badge>}
+                                                    {v.tech_eval_note && (
+                                                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed px-1">
+                                                            {v.tech_eval_note}
+                                                        </p>
+                                                    )}
+                                                    {!v.tech_eval_note && <p className="text-sm text-muted-foreground italic px-1">No remarks provided.</p>}
+                                                </div>
+                                            ) : (isPrice || isRevisedPrice) ? (
+                                                <div className="flex flex-col gap-2 w-full">
+                                                    <div className="flex items-center gap-2 w-full justify-between h-9">
+                                                        <span className="font-mono text-sm">IDR {formatNumber(revisedValue || "0")}</span>
+                                                        {isRevisedPrice && (() => {
+                                                            const original = parseFloat(v.price_note || "0")
+                                                            const revised = parseFloat(revisedValue || "0")
+                                                            const diff = original - revised
+                                                            let colorClass = "bg-slate-100 text-slate-600"
+                                                            if (diff > 0) colorClass = "bg-green-100 text-green-700"
+                                                            if (diff < 0) colorClass = "bg-red-100 text-red-700"
+                                                            return (
+                                                                <span className={cn("text-xs font-mono font-medium ml-2 px-1.5 py-0.5 rounded", colorClass)}>
+                                                                    {diff > 0 ? "+" : ""}{formatNumber(diff.toString())}
+                                                                </span>
+                                                            )
+                                                        })()}
                                                     </div>
-                                                ) :
-                                                    (isPrice || isRevisedPrice) ? (
-                                                        <div className="flex items-center gap-2 w-full justify-between">
-                                                            <span className="font-mono">IDR {formatNumber(revisedValue || "0")}</span>
-                                                            {isRevisedPrice && (() => {
-                                                                const original = parseFloat(v.price_note || "0")
-                                                                const revised = parseFloat(revisedValue || "0")
-                                                                const diff = original - revised
-                                                                let colorClass = "bg-slate-100 text-slate-600"
-                                                                if (diff > 0) colorClass = "bg-green-100 text-green-700"
-                                                                if (diff < 0) colorClass = "bg-red-100 text-red-700"
-                                                                return (
-                                                                    <span className={cn("text-xs font-mono font-medium ml-2 px-1.5 py-0.5 rounded", colorClass)}>
-                                                                        {diff > 0 ? "+" : ""}{formatNumber(diff.toString())}
-                                                                    </span>
-                                                                )
-                                                            })()}
-                                                        </div>
-                                                    ) :
-                                                        isClarification ? (v.tech_eval_remarks || "-") :
-                                                            isOther ? (() => {
-                                                                const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
-                                                                return sd?.remarks || "-"
-                                                            })() :
-                                                                displayValue}
+                                                    {(() => {
+                                                        const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
+                                                        return sd?.remarks ? (
+                                                            <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed px-1">
+                                                                {sd.remarks}
+                                                            </p>
+                                                        ) : null
+                                                    })()}
+                                                </div>
+                                            ) : isClarification ? (
+                                                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed px-1">
+                                                    {v.tech_eval_remarks || "No remarks provided."}
+                                                </p>
+                                            ) : isOther ? (
+                                                (() => {
+                                                    const sd = v.step_dates?.find(d => d.agenda_step_id === agendaItem.id)
+                                                    return (
+                                                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed px-1">
+                                                            {sd?.remarks || "No remarks provided."}
+                                                        </p>
+                                                    )
+                                                })()
+                                            ) : null}
                                         </div>
                                     )}
                                 </div>

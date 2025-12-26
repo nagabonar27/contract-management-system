@@ -2,9 +2,10 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { DateRangePicker, DateRange } from "@/components/DatePicker"
 import { Trash2, Plus } from "lucide-react"
-import { format, parseISO } from "date-fns"
+import { format, parseISO, differenceInCalendarDays } from "date-fns"
 import { ContractVendor, VendorStepDate } from "./BidAgendaSection"
 
 interface VendorFindingsSubSectionProps {
@@ -47,7 +48,23 @@ export function VendorFindingsSubSection({
                                         placeholder="Vendor Name"
                                     />
                                 ) : (
-                                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{v.vendor_name}</span>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{v.vendor_name}</span>
+                                        {(() => {
+                                            const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
+                                            if (stepDate?.start_date && stepDate?.end_date) {
+                                                const s = parseISO(stepDate.start_date)
+                                                const e = parseISO(stepDate.end_date)
+                                                const dur = differenceInCalendarDays(e, s) + 1
+                                                return (
+                                                    <span className="text-xs text-muted-foreground mt-0.5">
+                                                        {dur} Days | {stepDate.start_date} - {stepDate.end_date}
+                                                    </span>
+                                                )
+                                            }
+                                            return null
+                                        })()}
+                                    </div>
                                 )}
                             </div>
                             {isEditingAgenda && (
@@ -64,11 +81,12 @@ export function VendorFindingsSubSection({
 
                         <div className="p-4 space-y-4">
                             {/* DATES ROW */}
-                            <div className="space-y-1">
-                                <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Timeline</Label>
-                                {isEditingAgenda ? (
+                            {/* DATES ROW - Only show in Edit Mode (View mode is in header) */}
+                            {isEditingAgenda && (
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold w-[60px] shrink-0">Dates</Label>
                                     <DateRangePicker
-                                        className="w-full sm:w-[300px]"
+                                        className="w-[240px]"
                                         value={(() => {
                                             const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
                                             return {
@@ -103,23 +121,14 @@ export function VendorFindingsSubSection({
                                             onUpdateVendorData(v.id, 'step_dates' as any, updated)
                                         }}
                                     />
-                                ) : (
-                                    (() => {
-                                        const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
-                                        return (stepDate?.start_date || stepDate?.end_date) ? (
-                                            <div className="text-sm border rounded px-3 py-1.5 bg-slate-50 dark:bg-slate-800 inline-block">
-                                                {stepDate.start_date || "?"} - {stepDate.end_date || "?"}
-                                            </div>
-                                        ) : <span className="text-sm text-muted-foreground">-</span>
-                                    })()
-                                )}
-                            </div>
+                                </div>
+                            )}
 
                             {/* REMARKS ROW */}
-                            <div className="space-y-1">
+                            <div className="flex flex-col gap-2">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Remarks</Label>
                                 {isEditingAgenda ? (
-                                    <Input
+                                    <Textarea
                                         value={(() => {
                                             const stepDate = v.step_dates?.find(sd => sd.agenda_step_id === item.id)
                                             return stepDate?.remarks || ""
@@ -145,13 +154,13 @@ export function VendorFindingsSubSection({
                                             }
                                             onUpdateVendorData(v.id, 'step_dates' as any, updated)
                                         }}
-                                        className="h-9 w-full text-sm bg-white"
+                                        className="min-h-[80px] w-full text-sm bg-white"
                                         placeholder="Add remarks..."
                                     />
                                 ) : (
-                                    <div className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-2 rounded border">
-                                        {v.step_dates?.find(sd => sd.agenda_step_id === item.id)?.remarks || "No remarks."}
-                                    </div>
+                                    <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed px-1">
+                                        {v.step_dates?.find(sd => sd.agenda_step_id === item.id)?.remarks || "No remarks provided."}
+                                    </p>
                                 )}
                             </div>
                         </div>

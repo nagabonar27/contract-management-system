@@ -37,7 +37,7 @@ export function GanttChart({ agendaItems, vendorItems, expandedSteps, onToggleSt
     }, [vendorItems])
 
     // Calculate timeline start/end
-    const { startDate, endDate, totalDays, weeks } = React.useMemo(() => {
+    const { startDate, endDate, totalDays, weeks, actualStart, actualEnd } = React.useMemo(() => {
         let minTime = new Date().getTime()
         let maxTime = new Date().getTime() + (30 * 24 * 60 * 60 * 1000)
 
@@ -81,7 +81,7 @@ export function GanttChart({ agendaItems, vendorItems, expandedSteps, onToggleSt
             idx++
         }
 
-        return { startDate: start, endDate: end, totalDays: days, weeks: weeksArr }
+        return { startDate: start, endDate: end, totalDays: days, weeks: weeksArr, actualStart: new Date(minTime), actualEnd: new Date(maxTime) }
     }, [agendaItems, vendorItems])
 
     // Helpers
@@ -206,8 +206,10 @@ export function GanttChart({ agendaItems, vendorItems, expandedSteps, onToggleSt
                     <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setDayWidth(p => Math.max(20, p - 10))}><Minus className="h-3 w-3" /></Button>
                     <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setDayWidth(p => Math.min(100, p + 10))}><Plus className="h-3 w-3" /></Button>
                 </div>
-                <div className="text-xs font-medium text-gray-500">
-                    {format(startDate, 'MMM dd')} - {format(endDate, 'MMM dd, yyyy')}
+                <div className="text-xs font-medium text-gray-500 flex items-center gap-2">
+                    <span>{format(actualStart, 'MMM dd')} - {format(actualEnd, 'MMM dd, yyyy')}</span>
+                    <span className="text-gray-300">|</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-300">Total Lead Time: {differenceInDays(actualEnd, actualStart) + 1} Days</span>
                 </div>
             </div>
 
