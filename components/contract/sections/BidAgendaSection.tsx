@@ -270,7 +270,6 @@ export function BidAgendaSection({
                                                         if (s) onUpdateAgendaItem(item.id, "start_date", s)
                                                         if (e) onUpdateAgendaItem(item.id, "end_date", e)
                                                     }}
-                                                    placeholder="Set Duration"
                                                 />
                                             )}
 
