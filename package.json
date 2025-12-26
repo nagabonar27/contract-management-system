@@ -29,8 +29,6 @@
     "@tanstack/react-table": "^8.21.3",
     "@tremor/react": "^3.18.7",
     "@types/node": "20.1.4",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
     "@uidotdev/usehooks": "^2.4.1",
     "autoprefixer": "10.4.14",
     "class-variance-authority": "^0.7.1",
@@ -58,6 +56,8 @@
   },
   "devDependencies": {
     "@types/lodash.throttle": "^4.1.9",
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
     "supabase": "^2.67.2",
     "ts-node": "^10.9.2"
   }
