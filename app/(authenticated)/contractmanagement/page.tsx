@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ContractNav } from "@/components/contract/ContractNav"
+import { ContractNav } from "@/components/contract/nav/ContractNav"
 import { OngoingContractsTable } from "@/components/contract/tables/OngoingContractsTable"
 import { ActiveContractsTable } from "@/components/contract/tables/ActiveContractsTable"
 import { ExpiringContractsTable } from "@/components/contract/tables/ExpiringContractsTable"

@@ -7,8 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Combobox, Option } from "@/components/ui/shared/combobox"
 import { FilePenLine, FileCheck } from "lucide-react"
 import { getDivisionColor } from "@/lib/contractUtils"
-import { ContractBadges } from "@/components/contract/ContractBadges"
-import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
+import { ContractBadges } from "@/components/contract/ui/ContractBadges"
+import { ContractStatusBadge } from "@/components/contract/ui/ContractStatusBadge"
 import { DatePicker } from "@/components/DatePicker"
 import { format, parseISO } from "date-fns"
 

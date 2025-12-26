@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MoreVertical, Eye, FileEdit } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
-import { AmendWorkflowModal } from "@/components/contract/AmendWorkflowModal"
-import { FinalizeContractModal } from "@/components/contract/FinalizeContractModal"
+import { AmendWorkflowModal } from "@/components/contract/modals/AmendWorkflowModal"
+import { FinalizeContractModal } from "@/components/contract/modals/FinalizeContractModal"
 import { ContractService } from "@/services/contractService"
 
 interface ExpiredContract {

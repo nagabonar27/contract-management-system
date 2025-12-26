@@ -13,7 +13,7 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
+import { ContractStatusBadge } from "@/components/contract/ui/ContractStatusBadge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -24,7 +24,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ContractActionsMenu } from "@/components/contract/ContractActionsMenu"
+import { ContractActionsMenu } from "@/components/contract/nav/ContractActionsMenu"
 import {
     MoreVertical,
     Eye,
@@ -37,7 +37,7 @@ import { toast } from "sonner"
 import { formatCurrency, getDivisionColor, getDivisionHexColor, getColorForString } from "@/lib/contractUtils"
 
 import { format } from "date-fns"
-import CreateContractSheet from "@/components/contract/CreateContractSheet"
+import CreateContractSheet from "@/components/contract/modals/CreateContractSheet"
 import { ContractService } from "@/services/contractService"
 import { InteractivePieChart } from "@/components/charts/InteractivePieChart"
 import { ContractStatusChart } from "@/components/charts/ContractStatusChart"
@@ -53,7 +53,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ContractBadges } from "@/components/contract/ContractBadges"
+import { ContractBadges } from "@/components/contract/ui/ContractBadges"
 
 // --- CONSTANTS & TYPES ---
 

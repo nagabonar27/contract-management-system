@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useState, Fragment, useMemo } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ContractNav } from "@/components/contract/ContractNav"
+import { ContractNav } from "@/components/contract/nav/ContractNav"
 import { Badge } from "@/components/ui/badge"
 import {
     BarChart3,
@@ -75,7 +75,7 @@ type PicPerformance = {
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { calculatePriceDifference, formatCurrency, getDivisionColor } from "@/lib/contractUtils"
-import { ContractStatusBadge } from "@/components/contract/ContractStatusBadge"
+import { ContractStatusBadge } from "@/components/contract/ui/ContractStatusBadge"
 import { format } from "date-fns"
 
 export default function PerformancePage() {
