@@ -1,18 +1,18 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AddStepModal } from "@/components/ui/shared/add-step-modal"
-import { Trash2, Pencil, Check } from "lucide-react"
+import { Trash2, Calendar, ChevronRight, ChevronDown, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { VendorEvaluationRows } from "./VendorEvaluationRows"
 import { VendorFindingsSubSection } from "./VendorFindingsSubSection"
-// import { ISODateInput } from "@/components/ui/iso-date-input"
-import { DateRangePicker, DatePicker, DateRange } from "@/components/DatePicker"
+import { DateRangePicker, DateRange } from "@/components/DatePicker"
 import { format, parseISO } from "date-fns"
+import { Label } from "@/components/ui/label"
+import { Card, CardHeader, CardContent } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 
 // Export types for use in other components
 export interface AgendaItem {
@@ -21,6 +21,8 @@ export interface AgendaItem {
     step_name: string
     start_date: string | null
     end_date: string | null
+    actual_start_date?: string | null
+    actual_end_date?: string | null
     remarks: string | null
     status: string
     created_at: string
@@ -66,11 +68,16 @@ interface BidAgendaSectionProps {
     onDeleteStep: (stepId: string) => void
     onUpdateAgendaItem: (itemId: string, field: keyof AgendaItem, value: string) => void
     onUpdateVendorData: (vendorId: string, field: keyof ContractVendor, value: any) => void
-    onAddVendor: (stepId: string) => void  // Updated to accept stepId
+    onAddVendor: (stepId: string) => void
     onDeleteVendor: (vendorId: string) => void
     onNewVendorNameChange: (value: string) => void
     appointedVendorName?: string | null
     onAppointedVendorChange?: (name: string) => void
+    // Sync Props
+    expandedSteps?: Set<string>
+    onToggleStep?: (stepId: string) => void
+    onExpandAll?: () => void
+    onCollapseAll?: () => void
 }
 
 export function BidAgendaSection({
@@ -90,240 +97,302 @@ export function BidAgendaSection({
     onNewVendorNameChange,
     appointedVendorName,
     onAppointedVendorChange,
+    expandedSteps,
+    onToggleStep,
+    onExpandAll,
+    onCollapseAll,
 }: BidAgendaSectionProps) {
-    const renderAgendaRow = (item: AgendaItem, index: number) => {
-        const step = item.step_name
 
-        const isClarification = step.toLowerCase() === "clarification meeting"
-        const isVendorFindings = step.toLowerCase() === "vendor findings"
-        const isAppointedVendor = step.toLowerCase() === "appointed vendor"
-        const isRevisedPrice = step.toLowerCase().includes("revised price")
-        const isKYC = step.toLowerCase().includes("kyc")
-        const isTechEval = step.toLowerCase().includes("tech eval") || step.toLowerCase().includes("technical evaluation")
-        const isPrice = step.toLowerCase().includes("price") && !isRevisedPrice
-
-        const isVendorDependent = (isKYC || isTechEval || isPrice || isRevisedPrice || isAppointedVendor || isClarification) && !isVendorFindings
-
-        // Filter vendors for this specific step
-        let stepVendors: ContractVendor[] = []
-
-        if (isVendorFindings) {
-            stepVendors = vendorList.filter(v => v.agenda_step_id === item.id)
-        } else if (isVendorDependent) {
-            for (let i = index - 1; i >= 0; i--) {
-                // Look backward in the list for Vendor Findings
-                if (agendaList[i].step_name === "Vendor Findings") {
-                    stepVendors = vendorList.filter(v => v.agenda_step_id === agendaList[i].id)
-                    break
-                }
-            }
-        }
-
-        return (
-            <React.Fragment key={item.id}>
-                <tr className={cn("border-b transition-colors", isEditingAgenda ? "bg-muted/30" : "hover:bg-muted/50")}>
-                    <td className="p-4 align-top font-medium pl-8 relative">
-                        {/* Indentation Visual */}
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-transparent group-hover:bg-primary/10"></div>
-                        <div>{item.step_name}</div>
-                        {item.status === 'Completed' && !isEditingAgenda && (
-                            <Badge className="mt-1 bg-green-500 text-[10px]">Done</Badge>
-                        )}
-                        {item.status === 'In Progress' && !isEditingAgenda && (
-                            <Badge className="mt-1 bg-blue-500 text-[10px]">Active</Badge>
-                        )}
-                    </td>
-                    <td className="p-4 align-top">
-                        {(isVendorFindings || isKYC || isClarification || isPrice || isRevisedPrice || isTechEval) ? (
-                            <span className="text-muted-foreground text-xs italic">Per vendor</span>
-                        ) : (item.step_name === "Contract Completed" || item.step_name === "Completed") ? (
-                            isEditingAgenda ? (
-                                <div className="flex justify-center w-full">
-                                    <DatePicker
-                                        className="w-full"
-                                        value={item.end_date ? parseISO(item.end_date) : undefined}
-                                        onChange={(date) => {
-                                            const d = date ? format(date, 'yyyy-MM-dd') : ""
-                                            onUpdateAgendaItem(item.id, 'start_date', d)
-                                            onUpdateAgendaItem(item.id, 'end_date', d)
-                                        }}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="flex flex-col">
-                                    <span className="text-xs text-muted-foreground">Date: {item.start_date || "-"}</span>
-                                </div>
-                            )
-                        ) : isEditingAgenda ? (
-                            <div className="flex justify-center w-full">
-                                <DateRangePicker
-                                    className="w-full"
-                                    value={{
-                                        from: item.start_date ? parseISO(item.start_date) : undefined,
-                                        to: item.end_date ? parseISO(item.end_date) : undefined,
-                                    }}
-                                    onChange={(value: DateRange | undefined) => {
-                                        const startDate = value?.from ? format(value.from, 'yyyy-MM-dd') : ""
-                                        const endDate = value?.to ? format(value.to, 'yyyy-MM-dd') : ""
-                                        onUpdateAgendaItem(item.id, 'start_date', startDate)
-                                        onUpdateAgendaItem(item.id, 'end_date', endDate)
-                                    }}
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex flex-col">
-                                <span className="text-xs text-muted-foreground">Start: {item.start_date || "-"}</span>
-                                <span className="text-xs text-muted-foreground">End: {item.end_date || "-"}</span>
-                            </div>
-                        )}
-                    </td>
-                    <td className="p-4 align-top">
-                        {isClarification ? (
-                            <span className="text-muted-foreground text-xs italic">Per vendor</span>
-                        ) : (isAppointedVendor && isEditingAgenda) ? (
-                            <div className="flex flex-col gap-2">
-                                <Select value={appointedVendorName || ""} onValueChange={val => onAppointedVendorChange?.(val)}>
-                                    <SelectTrigger className="h-8 w-full text-xs">
-                                        <SelectValue placeholder="Select Appointed Vendor" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {vendorList.filter(v => v.kyc_result === 'Pass').map(v => (
-                                            <SelectItem key={v.id} value={v.vendor_name}>{v.vendor_name}</SelectItem>
-                                        ))}
-                                        {vendorList.filter(v => v.kyc_result === 'Pass').length === 0 && (
-                                            <span className="p-2 text-xs text-muted-foreground">No passed vendors</span>
-                                        )}
-                                    </SelectContent>
-                                </Select>
-                                <Input
-                                    value={item.remarks || ""}
-                                    onChange={e => onUpdateAgendaItem(item.id, 'remarks', e.target.value)}
-                                    className="h-8 text-xs"
-                                    placeholder="Remarks..."
-                                />
-                            </div>
-                        ) : (
-                            isAppointedVendor ? (
-                                <div className="flex flex-col gap-1">
-                                    <div className="font-semibold text-xs text-blue-600">Winner: {appointedVendorName || "-"}</div>
-                                    <span className="text-xs text-muted-foreground">{item.remarks}</span>
-                                </div>
-                            ) : (
-                                isEditingAgenda ? (
-                                    (isVendorFindings || isKYC || isTechEval || isPrice || isRevisedPrice) ? (
-                                        <span className="text-muted-foreground text-xs italic">Per vendor</span>
-                                    ) : (
-                                        <Input
-                                            value={item.remarks || ""}
-                                            onChange={e => onUpdateAgendaItem(item.id, 'remarks', e.target.value)}
-                                            className="h-8 text-xs"
-                                            placeholder="Remarks..."
-                                        />
-                                    )
-                                ) : (
-                                    (isVendorFindings || isKYC || isTechEval || isPrice || isRevisedPrice) ? (
-                                        <span className="text-muted-foreground text-xs italic">Per vendor</span>
-                                    ) : (
-                                        <span>{item.remarks || "-"}</span>
-                                    )
-                                )
-                            ))}
-                    </td>
-                    {isEditingAgenda && (
-                        <td className="p-4 align-top text-right">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-red-500"
-                                onClick={() => onDeleteStep(item.id)}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                        </td>
-                    )}
-                </tr>
-
-                {/* Vendor Findings / Sub-sections */}
-                {isVendorFindings && (
-                    <tr>
-                        <td colSpan={4} className="px-4 pb-4 pt-0 bg-muted/10">
-                            <VendorFindingsSubSection
-                                item={item}
-                                stepVendors={stepVendors}
-                                isEditingAgenda={isEditingAgenda}
-                                newVendorName={newVendorName}
-                                onNewVendorNameChange={onNewVendorNameChange}
-                                onAddVendor={onAddVendor}
-                                onDeleteVendor={onDeleteVendor}
-                                onUpdateVendorData={onUpdateVendorData}
-                            />
-                        </td>
-                    </tr>
-                )}
-
-                {isVendorDependent && stepVendors.length > 0 && (
-                    <VendorEvaluationRows
-                        agendaItem={item}
-                        vendorList={stepVendors}
-                        isEditingAgenda={isEditingAgenda}
-                        onUpdateVendorData={onUpdateVendorData}
-                        onUpdateAgendaItem={onUpdateAgendaItem}
-                    />
-                )}
-            </React.Fragment>
-        )
+    // Helper to calculate sub-duration
+    const getSubDuration = (item: AgendaItem) => {
+        if (!item.actual_start_date || !item.actual_end_date) return 0
+        const start = parseISO(item.actual_start_date)
+        const end = parseISO(item.actual_end_date)
+        const diffTime = Math.abs(end.getTime() - start.getTime())
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        return diffDays + 1 // Inclusive
     }
+
+
+    // Helper: Determine if step is vendor dependent
+    const isVendorDependentStep = (stepName: string) => {
+        const s = stepName.toLowerCase().trim()
+        return s.includes("kyc") ||
+            s.includes("tech") ||
+            s.includes("price") ||
+            s.includes("clarification") ||
+            s.includes("administratif") ||
+            s.includes("document") ||
+            s.includes("review") ||
+            s.includes("negotiation") ||
+            (s.includes("vendor") && !s.includes("findings") && !s.includes("contract"))
+    }
+
+    const isAppointedVendorStep = (stepName: string) => stepName.toLowerCase().trim() === "appointed vendor"
+
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex justify-between items-center">
-                    <CardTitle>Bid Agenda</CardTitle>
-                    <div className="flex items-center gap-2">
-                        {isEditingAgenda && <AddStepModal onSelect={onAddStep} />}
+        <div className="space-y-4 p-6 pb-20">
+            {/* Header Tools */}
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex gap-2">
+                    {expandedSteps && expandedSteps.size === agendaList.length ? (
                         <Button
-                            variant={isEditingAgenda ? "default" : "outline"}
+                            variant="ghost"
                             size="sm"
-                            onClick={() => {
-                                if (isEditingAgenda) onSaveAll()
-                                else onEditToggle()
-                            }}
-                            disabled={isSavingAgenda}
+                            onClick={onCollapseAll}
+                            className="text-xs text-muted-foreground"
                         >
-                            {isSavingAgenda ? "Saving..." : isEditingAgenda ? (
-                                <>
-                                    <Check className="mr-2 h-4 w-4" /> Save Agenda
-                                </>
-                            ) : (
-                                <>
-                                    <Pencil className="mr-2 h-4 w-4" /> Edit Agenda
-                                </>
-                            )}
+                            <ChevronRight className="h-3.5 w-3.5 mr-1" /> Collapse All
                         </Button>
-                    </div>
+                    ) : (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onExpandAll}
+                            className="text-xs text-muted-foreground"
+                        >
+                            <ChevronDown className="h-3.5 w-3.5 mr-1" /> Expand All
+                        </Button>
+                    )}
                 </div>
-            </CardHeader>
-            <CardContent>
-                <div className="rounded-md border overflow-hidden">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50">
-                            <tr className="border-b">
-                                <th className="h-10 px-4 text-left font-medium w-1/3">Step</th>
-                                <th className="h-10 px-4 text-left font-medium w-[300px]">Timeline</th>
-                                <th className="h-10 px-4 text-left font-medium">Remarks</th>
-                                {isEditingAgenda && <th className="h-10 px-4 text-right">Action</th>}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {agendaList.length === 0 && (
-                                <tr>
-                                    <td colSpan={4} className="p-4 text-center">No steps added.</td>
-                                </tr>
-                            )}
-                            {agendaList.map((item, index) => renderAgendaRow(item, index))}
-                        </tbody>
-                    </table>
+            </div>
+
+            {agendaList.map((item, index) => {
+                const subDuration = getSubDuration(item)
+                const isExpanded = expandedSteps?.has(item.id)
+                const isVendorItem = item.step_name === "Vendor Findings"
+                const isDependent = isVendorDependentStep(item.step_name)
+                const isAppointed = isAppointedVendorStep(item.step_name)
+
+                // Calculate Display Dates (Aggregation for Dependent Steps)
+                let displayStart = item.start_date
+                let displayEnd = item.end_date
+
+                // For dependent steps, ALWAYS prefer the aggregated vendor dates
+                // This ensures that if we update a vendor, the header updates immediately
+                if (isDependent) {
+                    const relatedDates = vendorList
+                        .flatMap(v => v.step_dates || [])
+                        .filter(sd => sd.agenda_step_id === item.id)
+
+                    if (relatedDates.length > 0) {
+                        const startTimes = relatedDates.map(d => d.start_date ? new Date(d.start_date).getTime() : Infinity).filter(t => t !== Infinity)
+                        const endTimes = relatedDates.map(d => d.end_date ? new Date(d.end_date).getTime() : -Infinity).filter(t => t !== -Infinity)
+
+                        if (startTimes.length > 0) {
+                            const minStart = new Date(Math.min(...startTimes))
+                            displayStart = format(minStart, "yyyy-MM-dd")
+                        }
+                        if (endTimes.length > 0) {
+                            const maxEnd = new Date(Math.max(...endTimes))
+                            displayEnd = format(maxEnd, "yyyy-MM-dd")
+                        }
+                    }
+                }
+
+                // Recalculate duration based on display dates
+                let displayDuration = 0
+                if (displayStart && displayEnd) {
+                    const start = parseISO(displayStart)
+                    const end = parseISO(displayEnd)
+                    const diffTime = Math.abs(end.getTime() - start.getTime())
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+                    displayDuration = diffDays + 1
+                }
+
+                return (
+                    <Card key={item.id} className={cn("border-l-4 shadow-sm transition-all overflow-visible",
+                        item.status === 'Completed' ? "border-l-green-500" :
+                            item.status === 'In Progress' ? "border-l-blue-500" : "border-l-slate-200"
+                    )}>
+                        <CardHeader className="py-3 px-4 bg-muted/5 border-b flex flex-row items-center justify-between space-y-0">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 rounded-full hover:bg-slate-200"
+                                    onClick={() => onToggleStep?.(item.id)}
+                                >
+                                    {isExpanded ? (
+                                        <ChevronDown className="h-4 w-4 text-slate-500" />
+                                    ) : (
+                                        <ChevronRight className="h-4 w-4 text-slate-500" />
+                                    )}
+                                </Button>
+                                <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0",
+                                    item.status === 'Completed' ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"
+                                )}>
+                                    {index + 1}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        {/* READ ONLY STEP NAME */}
+                                        <span className="text-sm font-semibold truncate" title={item.step_name}>
+                                            {item.step_name}
+                                        </span>
+                                        <Badge variant="secondary" className={cn("text-[10px] h-5 px-1.5 font-normal",
+                                            item.status === 'Completed' ? "bg-green-50 text-green-700" :
+                                                item.status === 'In Progress' ? "bg-blue-50 text-blue-700" : ""
+                                        )}>
+                                            {item.status}
+                                        </Badge>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-0.5 flex gap-2">
+                                        <span>{displayDuration} Days</span>
+                                        {displayStart && (
+                                            <span className="hidden sm:inline">| {displayStart} - {displayEnd}</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Date & Actions */}
+
+                        </CardHeader>
+
+                        {/* Expandable Content */}
+                        {isExpanded && (
+                            <CardContent className="p-0 animate-in slide-in-from-top-2 duration-200">
+                                {isEditingAgenda && (
+                                    <div className="p-3 border-b bg-gray-50 flex items-center justify-between gap-4">
+                                        <div className="flex items-center gap-2">
+                                            {(!isVendorItem && !isDependent && !isAppointed) && <span className="text-xs font-semibold text-muted-foreground mr-2">Dates:</span>}
+                                            {!isDependent && !isVendorItem && !isAppointed && (
+                                                <DateRangePicker
+                                                    className="w-[240px] bg-white border shadow-sm"
+                                                    value={{
+                                                        from: item.start_date ? parseISO(item.start_date) : undefined,
+                                                        to: item.end_date ? parseISO(item.end_date) : undefined,
+                                                    }}
+                                                    onChange={(val) => {
+                                                        const s = val?.from ? format(val.from, 'yyyy-MM-dd') : ""
+                                                        const e = val?.to ? format(val.to, 'yyyy-MM-dd') : ""
+                                                        if (s) onUpdateAgendaItem(item.id, "start_date", s)
+                                                        if (e) onUpdateAgendaItem(item.id, "end_date", e)
+                                                    }}
+                                                    placeholder="Set Duration"
+                                                />
+                                            )}
+                                            {(isVendorItem || isDependent || isAppointed) && <span className="text-xs text-muted-foreground italic">Configuration available below.</span>}
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            className="h-8 px-3 text-xs shadow-sm"
+                                            onClick={(e) => { e.stopPropagation(); onDeleteStep(item.id); }}
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Step
+                                        </Button>
+                                    </div>
+                                )}
+                                {/* Vendor Finding Special Section */}
+                                {isVendorItem && (
+                                    <div className="border-t border-l-[3px] border-l-purple-500 bg-purple-50/10 p-4">
+                                        <VendorFindingsSubSection
+                                            item={item}
+                                            stepVendors={vendorList}
+                                            isEditingAgenda={isEditingAgenda}
+                                            newVendorName={newVendorName}
+                                            onNewVendorNameChange={onNewVendorNameChange}
+                                            onAddVendor={onAddVendor}
+                                            onDeleteVendor={onDeleteVendor}
+                                            onUpdateVendorData={onUpdateVendorData}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Dependent Steps (KYC, Tech, Price) */}
+                                {isDependent && (
+                                    <div className="border-t border-l-[3px] border-l-purple-500 bg-purple-50/10 p-4">
+                                        <div className="space-y-4 pt-2">
+                                            <VendorEvaluationRows
+                                                agendaItem={item}
+                                                vendorList={vendorList}
+                                                isEditingAgenda={isEditingAgenda}
+                                                onUpdateVendorData={onUpdateVendorData}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Appointed Vendor */}
+                                {isAppointed && (
+                                    <div className="p-4 border-t bg-green-50/30">
+                                        <div className="flex items-center gap-4">
+                                            <Label className="text-xs uppercase font-bold text-green-800">Final Appointed Vendor</Label>
+                                            {isEditingAgenda ? (
+                                                <Select
+                                                    value={appointedVendorName || ""}
+                                                    onValueChange={onAppointedVendorChange}
+                                                >
+                                                    <SelectTrigger className="w-[300px] h-8 text-sm bg-white">
+                                                        <SelectValue placeholder="Select Winner..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {vendorList.filter(v => v.kyc_result !== 'Fail').map(v => (
+                                                            <SelectItem key={v.id} value={v.vendor_name}>
+                                                                {v.vendor_name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <Badge className="bg-green-600 text-white hover:bg-green-700 text-sm py-1 px-3">
+                                                    {appointedVendorName || "No Vendor Appointed"}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        {/* Optional: Date for appointed step */}
+                                        {isEditingAgenda && (
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span className="text-xs text-muted-foreground w-[120px]">Appointed Date:</span>
+                                                <DateRangePicker
+                                                    className="w-[240px]"
+                                                    value={{
+                                                        from: item.start_date ? parseISO(item.start_date) : undefined,
+                                                        to: item.end_date ? parseISO(item.end_date) : undefined,
+                                                    }}
+                                                    onChange={(val) => {
+                                                        const s = val?.from ? format(val.from, 'yyyy-MM-dd') : ""
+                                                        const e = val?.to ? format(val.to, 'yyyy-MM-dd') : ""
+                                                        if (s) onUpdateAgendaItem(item.id, "start_date", s)
+                                                        if (e) onUpdateAgendaItem(item.id, "end_date", e)
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Default Remarks (if not any of the above special cases) */}
+                                {!isVendorItem && !isDependent && !isAppointed && (
+                                    <div className="p-4 bg-slate-50/50 border-t flex flex-col gap-2">
+                                        <Label className="text-xs text-muted-foreground uppercase font-semibold">Remarks / Outcome</Label>
+                                        {isEditingAgenda ? (
+                                            <Textarea
+                                                value={item.remarks || ""}
+                                                onChange={(e) => onUpdateAgendaItem(item.id, "remarks", e.target.value)}
+                                                className="min-h-[80px] bg-white text-sm"
+                                                placeholder="Add details about this step..."
+                                            />
+                                        ) : (
+                                            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                                {item.remarks || "No remarks provided."}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </CardContent>
+                        )}
+                    </Card>
+                )
+            })}
+
+            {isEditingAgenda && (
+                <div className="w-full">
+                    <AddStepModal onSelect={onAddStep} />
                 </div>
-            </CardContent>
-        </Card>
+            )}
+        </div>
     )
 }

@@ -4,11 +4,12 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { getContractDisplayStatus } from "@/lib/contractUtils"
 import { BID_AGENDA_STEPS } from "@/lib/constant"
 import { ContractService } from "@/services/contractService"
@@ -483,7 +484,6 @@ export default function ContractDetailPage() {
         setNewVendorName("")
     }
 
-    // 6. Delete Vendor
     const handleDeleteVendor = async (vendorId: string) => {
         if (vendorId.startsWith('temp-')) {
             setVendorList(prev => prev.filter(v => v.id !== vendorId))
@@ -498,6 +498,15 @@ export default function ContractDetailPage() {
                 fetchVendors()
             }
         }
+    }
+
+    // Helper: Sync appointed vendor selection manually to prevent useEffect override
+    const handleAppointedVendorChange = (name: string) => {
+        setAppointedVendorName(name)
+        setVendorList(prev => prev.map(v => ({
+            ...v,
+            is_appointed: v.vendor_name === name
+        })))
     }
 
     // Helper: Determine Current Step from Agenda Statuses
@@ -579,12 +588,34 @@ export default function ContractDetailPage() {
                 const isTemp = item.id.startsWith('temp-')
                 const originalId = item.id
 
+                // Calculate effective dates from vendors if applicable
+                let calcStart = null
+                let calcEnd = null
+
+                if (vendorList.length > 0) {
+                    const relatedDates = vendorList
+                        .flatMap(v => v.step_dates || [])
+                        .filter(sd => sd.agenda_step_id === item.id)
+
+                    if (relatedDates.length > 0) {
+                        const starts = relatedDates.map(r => r.start_date ? new Date(r.start_date).getTime() : Infinity).filter(t => t !== Infinity)
+                        const ends = relatedDates.map(r => r.end_date ? new Date(r.end_date).getTime() : -Infinity).filter(t => t !== -Infinity)
+
+                        if (starts.length > 0) {
+                            calcStart = new Date(Math.min(...starts)).toISOString().split('T')[0]
+                        }
+                        if (ends.length > 0) {
+                            calcEnd = new Date(Math.max(...ends)).toISOString().split('T')[0]
+                        }
+                    }
+                }
+
                 const payload = {
                     contract_id: id,
                     step_name: item.step_name,
                     status: item.status,
-                    start_date: item.start_date || null,
-                    end_date: item.end_date || null,
+                    start_date: calcStart || item.start_date || null,
+                    end_date: calcEnd || item.end_date || null,
                     remarks: item.remarks || null,
                 }
 
@@ -647,8 +678,8 @@ export default function ContractDetailPage() {
                     contract_id: id,
                     vendor_name: v.vendor_name,
                     agenda_step_id: resolvedStepId || null,
-                    kyc_result: v.kyc_result,
-                    kyc_note: v.kyc_note,
+                    kyc_result: v.kyc_result || null,
+                    kyc_note: v.kyc_note || null,
                     tech_eval_note: v.tech_eval_note,
                     tech_eval_score: v.tech_eval_score,
                     tech_eval_remarks: v.tech_eval_remarks,
@@ -773,23 +804,101 @@ export default function ContractDetailPage() {
         }
     }
 
-    return (
-        <div className="flex-1 space-y-4 p-8 pt-6">
-            <div className="flex items-center justify-between space-y-2">
-                <div className="flex items-center space-x-2">
-                    <Link href="/contractmanagement?tab=ongoing">
-                        <Button variant="ghost" size="icon">
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                    </Link>
-                    <h2 className="text-3xl font-bold tracking-tight">Contract Details</h2>
-                </div>
-            </div>
+    // --- UI STATE FOR SYNC ---
+    const [expandedSteps, setExpandedSteps] = React.useState<Set<string>>(new Set())
 
-            {loading ? (
-                <div>Loading...</div>
-            ) : (
-                <div className="space-y-6">
+    const toggleStep = (stepId: string) => {
+        const newSet = new Set(expandedSteps)
+        if (newSet.has(stepId)) newSet.delete(stepId)
+        else newSet.add(stepId)
+        setExpandedSteps(newSet)
+    }
+
+    const expandAll = () => {
+        setExpandedSteps(new Set(agendaList.map(i => i.id)))
+    }
+
+    const collapseAll = () => {
+        setExpandedSteps(new Set())
+    }
+
+    // Resizable Pane State
+    const [leftWidth, setLeftWidth] = useState(50) // Percentage
+    const [isResizing, setIsResizing] = useState(false)
+    const containerRef = React.useRef<HTMLDivElement>(null)
+
+    const startResizing = React.useCallback(() => {
+        setIsResizing(true)
+    }, [])
+
+    const stopResizing = React.useCallback(() => {
+        setIsResizing(false)
+    }, [])
+
+    const resize = React.useCallback((e: MouseEvent) => {
+        if (isResizing && containerRef.current) {
+            const containerRect = containerRef.current.getBoundingClientRect()
+            const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100
+            if (newLeftWidth > 5 && newLeftWidth < 95) { // Limits (keep slight edge to grab)
+                setLeftWidth(newLeftWidth)
+            } else if (newLeftWidth <= 5) setLeftWidth(0)
+            else if (newLeftWidth >= 95) setLeftWidth(100)
+        }
+    }, [isResizing])
+
+    React.useEffect(() => {
+        if (isResizing) {
+            window.addEventListener("mousemove", resize)
+            window.addEventListener("mouseup", stopResizing)
+        } else {
+            window.removeEventListener("mousemove", resize)
+            window.removeEventListener("mouseup", stopResizing)
+        }
+        return () => {
+            window.removeEventListener("mousemove", resize)
+            window.removeEventListener("mouseup", stopResizing)
+        }
+    }, [isResizing, resize, stopResizing])
+
+    // Scroll Sync
+    React.useEffect(() => {
+        const left = document.querySelector('.component-scroll-sync-left')
+        const right = document.querySelector('.component-scroll-sync-right')
+
+        if (!left || !right) return
+
+        const handleLeftScroll = () => {
+            if (right) right.scrollTop = left.scrollTop
+        }
+        const handleRightScroll = () => {
+            if (left) left.scrollTop = right.scrollTop
+        }
+
+        left.addEventListener('scroll', handleLeftScroll)
+        right.addEventListener('scroll', handleRightScroll)
+
+        return () => {
+            left.removeEventListener('scroll', handleLeftScroll)
+            right.removeEventListener('scroll', handleRightScroll)
+        }
+    }, [])
+
+    // Sync expanded state with edit mode for Gantt
+    // When isEditingAgenda changes to true, we don't strictly update expandedSteps set, 
+    // but the component props handle the visualization.
+
+    return (
+        <main className="flex flex-col min-h-screen overflow-hidden container mx-auto max-w-screen-2xl">
+            {/* Header Section */}
+            <div className="flex flex-col flex-none z-40">
+                <div className="pt-4 pb-2 px-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Link href="/contractmanagement?tab=ongoing" className="group flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+                            <ChevronLeft className="h-5 w-5 group-hover:-translate-x-0.5 transition-transform" />
+                            <span className="sr-only">Back</span>
+                        </Link>
+                        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Contract Details</h1>
+                    </div>
                     <ContractHeader
                         contract={contract}
                         displayStatus={displayStatus}
@@ -802,7 +911,6 @@ export default function ContractDetailPage() {
                         typeOptions={typeOptions}
                         userOptions={userOptions}
                         userPosition={userPosition}
-                        appointedVendorName={appointedVendorName}
                         onEditToggle={() => setIsEditingHeader(!isEditingHeader)}
                         onFormChange={(updates) => setEditForm(prev => ({ ...prev, ...updates }))}
                         onSave={handleSaveHeader}
@@ -811,10 +919,6 @@ export default function ContractDetailPage() {
                             setShowFinalizeModal(true)
                         }}
                         onAmend={() => {
-                            if (hasAmendmentInProgress) {
-                                toast.error("An amendment is already in progress for this contract.")
-                                return
-                            }
                             setFinalizeMode('amend')
                             setShowFinalizeModal(true)
                         }}
@@ -823,66 +927,155 @@ export default function ContractDetailPage() {
                         isCR={isCR}
                         isOnHold={isOnHold}
                         isAnticipated={isAnticipated}
-                        onStatusChange={(field, val) => {
-                            if (field === 'is_cr') setIsCR(val)
-                            if (field === 'is_on_hold') setIsOnHold(val)
-                            if (field === 'is_anticipated') setIsAnticipated(val)
+                        onStatusChange={(field, value) => {
+                            if (field === 'is_cr') setIsCR(value)
+                            if (field === 'is_on_hold') setIsOnHold(value)
+                            if (field === 'is_anticipated') setIsAnticipated(value)
                         }}
                         hasAmendmentInProgress={hasAmendmentInProgress}
-                    />
-
-                    {/* BID AGENDA SECTION */}
-                    <BidAgendaSection
-                        agendaList={agendaList}
-                        vendorList={vendorList}
-                        isEditingAgenda={isEditingAgenda}
-                        isSavingAgenda={isSavingAgenda}
-                        newVendorName={newVendorName}
-                        onEditToggle={() => setIsEditingAgenda(!isEditingAgenda)}
-                        onSaveAll={handleSaveAll}
-                        onAddStep={handleAddStep}
-                        onDeleteStep={handleDeleteStep}
-                        onUpdateAgendaItem={handleUpdateAgendaItem}
-                        onUpdateVendorData={handleUpdateVendorData}
-                        onAddVendor={handleAddVendor}
-                        onDeleteVendor={handleDeleteVendor}
-                        onNewVendorNameChange={setNewVendorName}
                         appointedVendorName={appointedVendorName}
-                        onAppointedVendorChange={setAppointedVendorName}
+                        additionalActions={
+                            <>
+                                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                                    <span className="material-icons-round text-base">file_download</span>
+                                    Export
+                                </Button>
+                                <Button
+                                    onClick={() => {
+                                        if (isEditingAgenda) {
+                                            handleSaveAll()
+                                        } else {
+                                            setIsEditingAgenda(true)
+                                        }
+                                    }}
+                                    disabled={isSavingAgenda}
+                                    className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white"
+                                    size="sm"
+                                >
+                                    <span className="material-icons-round text-base">
+                                        {isEditingAgenda ? (isSavingAgenda ? "hourglass_empty" : "save") : "edit"}
+                                    </span>
+                                    {isEditingAgenda ? (isSavingAgenda ? "Saving..." : "Save Changes") : "Edit Agenda"}
+                                </Button>
+                            </>
+                        }
                     />
+                </div>
+            </div>
 
-                    {/* GANTT CHART */}
+            {/* Split Pane Content */}
+            <div
+                ref={containerRef}
+                className="flex-1 flex overflow-hidden border-t border-x border-border-light dark:border-border-dark relative select-none"
+            >
+                {/* LEFT PANE: AGENDA */}
+                <section
+                    className="flex flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark overflow-hidden transition-[width] duration-75 ease-linear will-change-[width]"
+                    style={{ width: `${leftWidth}%`, display: leftWidth === 0 ? 'none' : 'flex' }}
+                >
+                    <div className="h-full overflow-y-auto custom-scrollbar component-scroll-sync-left">
+                        <BidAgendaSection
+                            agendaList={agendaList}
+                            vendorList={vendorList}
+                            isEditingAgenda={isEditingAgenda}
+                            isSavingAgenda={isSavingAgenda}
+                            newVendorName={newVendorName}
+                            onEditToggle={() => setIsEditingAgenda(!isEditingAgenda)}
+                            onSaveAll={handleSaveAll}
+                            onAddStep={handleAddStep}
+                            onDeleteStep={handleDeleteStep}
+                            onUpdateAgendaItem={handleUpdateAgendaItem}
+                            onUpdateVendorData={handleUpdateVendorData}
+                            onAddVendor={handleAddVendor}
+                            onDeleteVendor={handleDeleteVendor}
+                            onNewVendorNameChange={setNewVendorName}
+                            appointedVendorName={appointedVendorName}
+                            onAppointedVendorChange={handleAppointedVendorChange}
+                            // Sync Props
+                            expandedSteps={expandedSteps}
+                            onToggleStep={toggleStep}
+                            onExpandAll={expandAll}
+                            onCollapseAll={collapseAll}
+                        />
+                    </div>
+                </section>
+
+                {/* RESIZER */}
+                <div
+                    className={cn(
+                        "w-1.5 hover:w-3 bg-border-light dark:bg-gray-700 hover:bg-primary/20 cursor-col-resize flex flex-col items-center justify-center relative z-50 group transition-all delay-75",
+                        isResizing && "bg-primary/20 w-3"
+                    )}
+                    onMouseDown={startResizing}
+                >
+                    {/* Horizontal Handle Indicator */}
+                    <div className="h-8 w-1 rounded-full bg-gray-300 dark:bg-gray-500 group-hover:bg-primary" />
+
+                    {/* Collapsible Buttons (Appear on Hover) */}
+                    <div className="absolute top-1/2 -translate-y-1/2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            className="h-6 w-6 rounded-full shadow-md border hover:bg-primary hover:text-white"
+                            onClick={(e) => { e.stopPropagation(); setLeftWidth(0); }}
+                            title="Maximize Chart (<)"
+                        >
+                            <ChevronLeft className="h-3 w-3" />
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="icon"
+                            className="h-6 w-6 rounded-full shadow-md border hover:bg-primary hover:text-white"
+                            onClick={(e) => { e.stopPropagation(); setLeftWidth(100); }}
+                            title="Maximize Agenda (>)"
+                        >
+                            <ChevronRight className="h-3 w-3" />
+                        </Button>
+                    </div>
+                </div>
+
+                {/* RIGHT PANE: GANTT */}
+                <section
+                    className="flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden relative transition-[width] duration-75 ease-linear will-change-[width]"
+                    style={{
+                        width: `${100 - leftWidth}%`,
+                        display: leftWidth === 100 ? 'none' : 'flex'
+                    }}
+                >
                     <GanttChart
                         agendaItems={agendaList}
                         vendorItems={vendorList}
+                        expandedSteps={expandedSteps}
+                        onToggleStep={toggleStep}
+                        forceExpanded={isEditingAgenda}
                     />
+                </section>
+            </div>
 
-                    {/* MODALS */}
-                    <FinalizeContractModal
-                        open={showFinalizeModal}
-                        onOpenChange={setShowFinalizeModal}
-                        contractNumber={finalizeContractNumber}
-                        effectiveDate={finalizeEffectiveDate}
-                        expiryDate={finalizeExpiryDate}
-                        contractSummary={finalizeContractSummary}
-                        onContractNumberChange={setFinalizeContractNumber}
-                        onEffectiveDateChange={setFinalizeEffectiveDate}
-                        onExpiryDateChange={setFinalizeExpiryDate}
-                        onContractSummaryChange={setFinalizeContractSummary}
-                        onFinalize={handleFinalize}
-                        isAmendment={finalizeMode === 'amend'}
-                        referenceContractNumber={finalizeReferenceNumber}
-                        onReferenceNumberChange={setFinalizeReferenceNumber}
-                    />
+            {/* MODALS */}
+            <FinalizeContractModal
+                open={showFinalizeModal}
+                onOpenChange={setShowFinalizeModal}
+                contractNumber={finalizeContractNumber}
+                effectiveDate={finalizeEffectiveDate}
+                expiryDate={finalizeExpiryDate}
+                contractSummary={finalizeContractSummary}
+                onContractNumberChange={setFinalizeContractNumber}
+                onEffectiveDateChange={setFinalizeEffectiveDate}
+                onExpiryDateChange={setFinalizeExpiryDate}
+                onContractSummaryChange={setFinalizeContractSummary}
+                onFinalize={handleFinalize}
+                isAmendment={finalizeMode === 'amend'}
+                referenceContractNumber={finalizeReferenceNumber}
+                onReferenceNumberChange={setFinalizeReferenceNumber}
+            />
 
-                    <ExtendContractModal
-                        open={showExtendModal}
-                        onOpenChange={setShowExtendModal}
-                        currentExpiryDate={contract?.expiry_date || ""}
-                        onExtend={handleExtend}
-                    />
-                </div>
-            )}
-        </div>
+            <ExtendContractModal
+                open={showExtendModal}
+                onOpenChange={setShowExtendModal}
+                currentExpiryDate={contract?.expiry_date || ""}
+                onExtend={handleExtend}
+            />
+        </main>
     )
 }

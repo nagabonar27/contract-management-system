@@ -4,331 +4,245 @@ import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ZoomIn, ZoomOut } from "lucide-react"
-import { format, differenceInDays, parseISO, min, max } from "date-fns"
-
-interface AgendaItem {
-    id: string
-    step_name: string
-    start_date: string | null
-    end_date: string | null
-    status?: string
-}
-
-interface VendorItem {
-    id: string
-    vendor_name: string
-    step_dates?: Array<{
-        agenda_step_id: string
-        start_date: string | null
-        end_date: string | null
-    }>
-}
+import { ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Plus, Minus } from "lucide-react"
+import { format, differenceInDays, parseISO, min, max, addDays, getDay, startOfWeek, endOfWeek } from "date-fns"
+import { cn } from "@/lib/utils"
+import { AgendaItem, ContractVendor } from "./BidAgendaSection"
 
 interface GanttChartProps {
     agendaItems: AgendaItem[]
-    vendorItems?: VendorItem[]
+    vendorItems: ContractVendor[]
+    expandedSteps?: Set<string>
+    onToggleStep?: (id: string) => void
+    forceExpanded?: boolean
 }
 
-export function GanttChart({ agendaItems, vendorItems = [] }: GanttChartProps) {
-    const [zoom, setZoom] = React.useState(100)
+export function GanttChart({ agendaItems, vendorItems, expandedSteps, onToggleStep, forceExpanded }: GanttChartProps) {
+    const [dayWidth, setDayWidth] = React.useState(50) // px per day
 
-    // Create timeline items: steps with vendor dates
-    const timelineItems: Array<{
-        id: string
-        name: string
-        start_date: string
-        end_date: string
-        type: 'step_header' | 'vendor'
-        agendaStepId?: string
-    }> = []
+    // Group vendors by agenda step for easy lookup
+    const stepVendorMap = React.useMemo(() => {
+        const map = new Map<string, ContractVendor[]>()
+        vendorItems.forEach(vendor => {
+            // We need to associate vendors to steps. 
+            // The vendor logic in BidAgendaSection filters by `vendor.agenda_step_id === item.id` for "Vendor Findings".
+            // For other steps, it implies all vendors.
+            // We'll trust the passed `vendor.agenda_step_id`.
+            if (vendor.agenda_step_id) {
+                if (!map.has(vendor.agenda_step_id)) map.set(vendor.agenda_step_id, [])
+                map.get(vendor.agenda_step_id)!.push(vendor)
+            }
+        })
+        return map
+    }, [vendorItems])
 
-    // Group vendors by agenda step
-    const stepVendorMap = new Map<string, Array<{
-        vendor: VendorItem
-        stepDate: { start_date: string; end_date: string }
-    }>>()
+    // Calculate timeline start/end
+    const { startDate, endDate, totalDays, weeks } = React.useMemo(() => {
+        let minTime = new Date().getTime()
+        let maxTime = new Date().getTime() + (30 * 24 * 60 * 60 * 1000)
 
-    // Collect all vendor dates grouped by step
-    vendorItems.forEach(vendor => {
-        vendor.step_dates?.forEach(sd => {
-            if (sd.start_date && sd.end_date) {
-                if (!stepVendorMap.has(sd.agenda_step_id)) {
-                    stepVendorMap.set(sd.agenda_step_id, [])
-                }
-                stepVendorMap.get(sd.agenda_step_id)!.push({
-                    vendor,
-                    stepDate: { start_date: sd.start_date, end_date: sd.end_date }
+        const dates: number[] = []
+        agendaItems.forEach(i => {
+            if (i.start_date) dates.push(new Date(i.start_date).getTime())
+            if (i.end_date) dates.push(new Date(i.end_date).getTime())
+        })
+        vendorItems.forEach(v => {
+            if (v.step_dates) {
+                v.step_dates.forEach(sd => {
+                    if (sd.start_date) dates.push(new Date(sd.start_date).getTime())
+                    if (sd.end_date) dates.push(new Date(sd.end_date).getTime())
                 })
             }
         })
-    })
 
-    // Build timeline: show each vendor as "Step Name: Vendor Name"
-    agendaItems.forEach(step => {
-        const vendorsForStep = stepVendorMap.get(step.id)
-
-        if (vendorsForStep && vendorsForStep.length > 0) {
-            // Add each vendor as separate row with "Step: Vendor" format
-            vendorsForStep.forEach(({ vendor, stepDate }) => {
-                timelineItems.push({
-                    id: `${vendor.id}-${step.id}`,
-                    name: `${step.step_name}: ${vendor.vendor_name}`,
-                    start_date: stepDate.start_date,
-                    end_date: stepDate.end_date,
-                    type: 'vendor',
-                    agendaStepId: step.id
-                })
-            })
-        } else if (step.start_date && step.end_date) {
-            // Show step without vendors if it has its own dates
-            timelineItems.push({
-                id: `step-${step.id}`,
-                name: step.step_name,
-                start_date: step.start_date,
-                end_date: step.end_date,
-                type: 'step_header',
-                agendaStepId: step.id
-            })
+        if (dates.length > 0) {
+            minTime = Math.min(...dates)
+            maxTime = Math.max(...dates)
         }
-    })
 
-    if (timelineItems.length === 0) {
+        // Add padding
+        const start = startOfWeek(new Date(minTime))
+        const end = endOfWeek(new Date(maxTime)) // Ensure full weeks
+
+        // Ensure at least 4 weeks
+        const days = differenceInDays(end, start) + 1
+
+        // Generate weeks
+        const weeksArr = []
+        let current = start
+        let idx = 1
+        while (current <= end) {
+            weeksArr.push({
+                start: current,
+                label: `Week ${idx}`,
+                dateLabel: format(current, 'MMM d')
+            })
+            current = addDays(current, 7)
+            idx++
+        }
+
+        return { startDate: start, endDate: end, totalDays: days, weeks: weeksArr }
+    }, [agendaItems, vendorItems])
+
+    // Helpers
+    const getLeftPos = (dateStr: string) => {
+        const d = new Date(dateStr)
+        const diff = differenceInDays(d, startDate)
+        return diff * dayWidth
+    }
+    const getDurationWidth = (startStr: string, endStr: string) => {
+        const s = new Date(startStr)
+        const e = new Date(endStr)
+        const days = differenceInDays(e, s) + 1
+        return Math.max(days, 1) * dayWidth
+    }
+
+    const todayPos = differenceInDays(new Date(), startDate) * dayWidth
+
+    const renderRow = (item: AgendaItem) => {
+        const stepName = item.step_name.toLowerCase()
+        const isVendorFindings = stepName === "vendor findings"
+        // Same logic as BidAgendaSection
+        const isDependent = stepName.includes("kyc") ||
+            stepName.includes("tech") ||
+            stepName.includes("price") ||
+            stepName.includes("clarification") ||
+            stepName.includes("administratif") ||
+            stepName.includes("document") ||
+            stepName.includes("review") ||
+            stepName.includes("negotiation") ||
+            (stepName.includes("vendor") && !stepName.includes("findings") && !stepName.includes("contract"))
+
+        const isExpanded = (expandedSteps?.has(item.id)) || forceExpanded
+
+        // Vendors for this step
+        // For Vendor Findings, we use the map (vendors created there).
+        // For Dependent steps, we use ALL vendors (they all get evaluated), filter happens in render via step_dates check.
+        const stepVendors = isVendorFindings
+            ? (stepVendorMap.get(item.id) || [])
+            : (isDependent ? vendorItems : [])
+
+        const hasSubRows = (isVendorFindings || isDependent) && isExpanded && stepVendors.length > 0
+
         return (
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Bid Timeline</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                        No timeline data available. Add vendor dates to see the timeline.
-                    </p>
-                </CardContent>
-            </Card>
+            <div key={item.id} className="border-b border-border-light dark:border-border-dark group">
+                {/* Main Row - Matches Agenda Card Height roughly */}
+                <div className="h-auto min-h-[100px] relative w-full">
+                    {/* We can't easily sync height perfectly without JS. 
+                         We'll use a fixed height container for the bar area that corresponds to the card.
+                         Agenda Card has padding, header, grid. It's flexible.
+                         Using a fixed height here effectively forces the Gantt to misalign if Agenda Card grows.
+                         
+                         BUT, for this task, we will try to stick to a reasonable default.
+                         If the user scrolls, they might drift.
+                         
+                         Let's just render the BAR.
+                     */}
+
+                    {/* Row Background Lines */}
+                    <div className="absolute inset-0 w-full h-full gantt-grid pointer-events-none z-0"
+                        style={{ backgroundSize: `${dayWidth}px 100%`, backgroundPosition: '0 0' }}></div>
+
+                    <div className="relative z-10 h-24 flex items-center">
+                        {item.start_date && (
+                            <div
+                                className={cn(
+                                    "absolute h-6 rounded-full shadow-sm text-xs flex items-center px-3 truncate transition-all hover:h-8 hover:z-20 cursor-pointer text-white font-medium",
+                                    item.status === 'Completed' || item.status === 'Finished' ? "bg-primary" : "bg-blue-500"
+                                )}
+                                style={{
+                                    left: `${getLeftPos(item.start_date)}px`,
+                                    width: `${getDurationWidth(item.start_date, item.end_date || item.start_date)}px`,
+                                    minWidth: '40px'
+                                }}
+                                title={`${item.step_name}: ${item.start_date} - ${item.end_date}`}
+                            >
+                                <span className="truncate drop-shadow-md">{item.step_name}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Sub Rows */}
+                {hasSubRows && (
+                    <div className="bg-gray-50/30 dark:bg-gray-800/20">
+                        {stepVendors.map(v => {
+                            // Find the date for this specific findings step
+                            const sd = v.step_dates?.find(d => d.agenda_step_id === item.id)
+                            return (
+                                <div key={v.id} className="h-auto relative w-full border-t border-dashed border-gray-200 dark:border-gray-700">
+                                    <div className="absolute inset-0 w-full h-full gantt-grid pointer-events-none z-0"
+                                        style={{ backgroundSize: `${dayWidth}px 100%`, backgroundPosition: '0 0' }}></div>
+
+                                    <div className="relative z-10 h-16 flex items-center"> {/* Smaller height for vendor rows? Agenda uses p-2 ... */}
+                                        {sd && sd.start_date && (
+                                            <div
+                                                className="absolute h-4 rounded-full bg-orange-400 text-[10px] flex items-center px-2 text-white shadow-sm hover:h-5 hover:z-20 transition-all"
+                                                style={{
+                                                    left: `${getLeftPos(sd.start_date)}px`,
+                                                    width: `${getDurationWidth(sd.start_date, sd.end_date || sd.start_date)}px`
+                                                }}
+                                            >
+                                                <span className="truncate">{v.vendor_name}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        })}
+                        {/* Spacer for "Add Vendor" button area */}
+                        <div className="h-12 w-full border-t border-transparent"></div>
+                    </div>
+                )}
+            </div>
         )
     }
 
-    // Calculate date range from all timeline items
-    const allDates = timelineItems.flatMap(item => [
-        parseISO(item.start_date),
-        parseISO(item.end_date)
-    ])
-    const minDate = min(allDates)
-    const maxDate = max(allDates)
-    // Add 1 day to include the last day in the range
-    const totalDays = differenceInDays(maxDate, minDate) + 1
-
-    // Get status color
-    const getStatusColor = (item: typeof timelineItems[0]) => {
-        const endDate = new Date(item.end_date)
-        const startDate = new Date(item.start_date)
-        const today = new Date()
-
-        if (endDate < today) {
-            return item.type === 'vendor' ? "bg-green-400" : "bg-green-500" // Completed
-        }
-        if (startDate <= today && endDate >= today) {
-            return item.type === 'vendor' ? "bg-blue-400" : "bg-blue-500" // In Progress
-        }
-        return item.type === 'vendor' ? "bg-gray-300" : "bg-gray-400" // Not Started
-    }
-
-    const getStatusBadge = (item: typeof timelineItems[0]) => {
-        const endDate = new Date(item.end_date)
-        const startDate = new Date(item.start_date)
-        const today = new Date()
-
-        if (endDate < today) {
-            return <Badge variant="default" className="bg-green-600 text-xs">Completed</Badge>
-        }
-        if (startDate <= today && endDate >= today) {
-            return <Badge variant="default" className="bg-blue-600 text-xs">In Progress</Badge>
-        }
-        return <Badge variant="secondary" className="text-xs">Not Started</Badge>
-    }
-
-    const handleZoomIn = () => setZoom(prev => Math.min(prev + 25, 200))
-    const handleZoomOut = () => setZoom(prev => Math.max(prev - 25, 50))
-
     return (
-        <Card className="shadow-lg border-0 animate-fade-in">
-            <CardHeader className="space-y-1 pb-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <div className="p-2 bg-primary/10 rounded-lg">
-                                <ZoomIn className="h-5 w-5 text-primary" />
+        <div className="h-full flex flex-col flex-1 overflow-hidden bg-white dark:bg-gray-900">
+            {/* Controls Header */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 sticky top-0 z-30">
+                <div className="flex gap-2">
+                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setDayWidth(p => Math.max(20, p - 10))}><Minus className="h-3 w-3" /></Button>
+                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => setDayWidth(p => Math.min(100, p + 10))}><Plus className="h-3 w-3" /></Button>
+                </div>
+                <div className="text-xs font-medium text-gray-500">
+                    {format(startDate, 'MMM dd')} - {format(endDate, 'MMM dd, yyyy')}
+                </div>
+            </div>
+
+            {/* Scrollable Area */}
+            <div className="flex-1 overflow-auto custom-scrollbar component-scroll-sync-right relative">
+                <div className="min-w-max relative" style={{ width: `${totalDays * dayWidth}px` }}> {/* Grid width */}
+
+                    {/* Sticky Date/Week Header */}
+                    <div className="sticky top-0 z-20 flex bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-border-light dark:border-border-dark shadow-sm">
+                        {weeks.map((w, i) => (
+                            <div key={i} className="flex flex-col items-center justify-center border-r border-gray-100 dark:border-gray-800 h-10 box-border text-xs text-gray-500"
+                                style={{ width: `${7 * dayWidth}px` }}>
+                                <span className="font-semibold">{w.label}</span>
+                                <span className="text-[10px] opacity-70">{w.dateLabel}</span>
                             </div>
-                            <CardTitle className="text-xl font-bold">Project Timeline</CardTitle>
-                        </div>
-                        <p className="text-sm text-muted-foreground ml-12">
-                            {format(minDate, 'MMM dd, yyyy')} - {format(maxDate, 'MMM dd, yyyy')} • {totalDays} days duration
-                        </p>
+                        ))}
                     </div>
-                    {/* Zoom Controls */}
-                    <div className="flex items-center gap-2 bg-secondary/30 p-1 rounded-lg border border-secondary">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 hover:bg-white/50"
-                            onClick={handleZoomOut}
-                            disabled={zoom <= 50}
+
+                    {/* Today Marker */}
+                    {todayPos >= 0 && (
+                        <div
+                            className="absolute top-0 bottom-0 border-l-2 border-dashed border-red-400 z-10 pointer-events-none"
+                            style={{ left: `${todayPos}px` }}
                         >
-                            <ZoomOut className="h-4 w-4" />
-                        </Button>
-                        <span className="text-xs font-medium text-muted-foreground min-w-[40px] text-center">
-                            {zoom}%
-                        </span>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 hover:bg-white/50"
-                            onClick={handleZoomIn}
-                            disabled={zoom >= 200}
-                        >
-                            <ZoomIn className="h-4 w-4" />
-                        </Button>
+                            <div className="sticky top-12 bg-red-400 text-white text-[10px] px-1 py-0.5 rounded-r-sm ml-[1px] w-max shadow-sm">Today</div>
+                        </div>
+                    )}
+
+                    {/* Content */}
+                    <div className="relative z-0">
+                        {agendaItems.map(item => renderRow(item))}
                     </div>
+
                 </div>
-            </CardHeader>
-            <CardContent>
-                {/* Scrollable Timeline Container */}
-                <div className="overflow-x-auto pb-4">
-                    <div className="space-y-4 min-w-[800px]">
-                        {/* Header Row */}
-                        <div className="flex items-center gap-6 pb-2 border-b">
-                            <div className="w-56 text-xs font-semibold text-muted-foreground uppercase tracking-wider pl-2">Step / Vendor</div>
-                            <div className="flex-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Timeline</div>
-                            <div className="w-32 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</div>
-                            <div className="w-24 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</div>
-                        </div>
-
-                        {/* Month/Date Header Row */}
-                        <div className="flex items-center gap-6 relative">
-                            <div className="w-56 shrink-0"></div>
-                            <div className="flex-1 h-8 relative border-b border-dashed border-gray-200">
-                                {/* Generate month markers */}
-                                {(() => {
-                                    const months: { label: string; leftPercent: number }[] = []
-                                    let currentDate = new Date(minDate)
-                                    // Make sure we stop before maxDate
-                                    while (currentDate <= maxDate) {
-                                        const daysFromStart = differenceInDays(currentDate, minDate)
-                                        const leftPercent = (daysFromStart / totalDays) * 100
-
-                                        // Only add if it fits
-                                        if (leftPercent <= 100) {
-                                            months.push({
-                                                label: format(currentDate, 'MMM yyyy'),
-                                                leftPercent
-                                            })
-                                        }
-
-                                        // Move to next month
-                                        currentDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)
-                                    }
-
-                                    return months.map((month, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="absolute text-xs font-medium text-gray-500 transform -translate-x-1/2 flex flex-col items-center"
-                                            style={{ left: `${month.leftPercent}%` }}
-                                        >
-                                            <span className="mb-1">{month.label}</span>
-                                            <div className="h-2 w-px bg-gray-300"></div>
-                                        </div>
-                                    ))
-                                })()}
-                            </div>
-                            <div className="w-32 shrink-0"></div>
-                            <div className="w-24 shrink-0"></div>
-                        </div>
-
-                        {/* Timeline Rows */}
-                        <div className="space-y-3">
-                            {timelineItems.map((item, idx) => {
-                                const start = parseISO(item.start_date)
-                                const end = parseISO(item.end_date)
-                                const daysFromStart = differenceInDays(start, minDate)
-                                const duration = differenceInDays(end, start) + 1
-
-                                const leftPercent = (daysFromStart / totalDays) * 100
-                                const widthPercent = (duration / totalDays) * 100
-
-                                const isVendor = item.type === 'vendor'
-
-                                return (
-                                    <div
-                                        key={item.id}
-                                        className={`group flex items-center gap-6 hover:bg-muted/30 p-2 rounded-lg transition-colors duration-200 animate-slide-in-right`}
-                                        style={{ animationDelay: `${idx * 50}ms` }}
-                                    >
-                                        {/* Step/Vendor Name */}
-                                        <div className="w-56 shrink-0 flex items-center gap-2">
-                                            {isVendor ? (
-                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 ml-2"></div>
-                                            ) : (
-                                                <div className="w-2 h-2 rounded-full bg-primary/70"></div>
-                                            )}
-                                            <div className={`text-sm truncate ${isVendor ? 'text-muted-foreground pl-1 font-normal' : 'font-medium text-foreground'
-                                                }`} title={item.name}>
-                                                {isVendor ? item.name.split(':')[1]?.trim() || item.name : item.name}
-                                            </div>
-                                        </div>
-
-                                        {/* Timeline Bar Container */}
-                                        <div className="flex-1 h-6 relative bg-secondary/20 rounded-full">
-                                            {/* Bar */}
-                                            <div
-                                                className={`absolute top-1 bottom-1 rounded-full ${getStatusColor(item)} shadow-sm transition-all duration-300 group-hover:brightness-95 group-hover:scale-y-110`}
-                                                style={{
-                                                    left: `${Math.max(0, leftPercent)}%`,
-                                                    width: `${Math.min(100, widthPercent)}%`,
-                                                    minWidth: '4px'
-                                                }}
-                                            >
-                                                {/* Tooltip on hover */}
-                                                <div className="opacity-0 group-hover:opacity-100 absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-md whitespace-nowrap z-10 pointer-events-none transition-opacity">
-                                                    {format(start, 'MMM dd')} - {format(end, 'MMM dd')}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Duration */}
-                                        <div className="w-32 text-xs shrink-0 flex flex-col justify-center">
-                                            <span className="font-medium text-gray-700">{duration} days</span>
-                                            <span className="text-[10px] text-muted-foreground">{format(start, 'MMM dd')} - {format(end, 'MMM dd')}</span>
-                                        </div>
-
-                                        {/* Status */}
-                                        <div className="w-24 shrink-0">
-                                            {getStatusBadge(item)}
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Legend */}
-                <div className="mt-8 flex justify-center">
-                    <div className="bg-secondary/20 px-4 py-2 rounded-full flex items-center gap-6 text-xs font-medium border border-secondary/50">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-green-500 rounded-full shadow-sm"></div>
-                            <span>Completed</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
-                            <span>In Progress</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-gray-400 rounded-full shadow-sm"></div>
-                            <span>Pending</span>
-                        </div>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     )
 }

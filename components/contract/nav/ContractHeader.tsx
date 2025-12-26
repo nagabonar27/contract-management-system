@@ -11,8 +11,10 @@ import { ContractBadges } from "@/components/contract/ui/ContractBadges"
 import { ContractStatusBadge } from "@/components/contract/ui/ContractStatusBadge"
 import { DatePicker } from "@/components/DatePicker"
 import { format, parseISO } from "date-fns"
+import { cn } from "@/lib/utils"
 
 interface ContractHeaderProps {
+    className?: string
     contract: {
         id: string
         title: string
@@ -73,6 +75,7 @@ interface ContractHeaderProps {
     onStatusChange?: (field: 'is_cr' | 'is_on_hold' | 'is_anticipated', value: boolean) => void
     hasAmendmentInProgress?: boolean
     appointedVendorName?: string | null
+    additionalActions?: React.ReactNode
 }
 
 export function ContractHeader({
@@ -99,26 +102,20 @@ export function ContractHeader({
     hasAmendmentInProgress = false,
     userOptions = [],
     userPosition = null,
-    appointedVendorName
+    appointedVendorName,
+    additionalActions
 }: ContractHeaderProps) {
-    /* getDivisionColor now imported from @/lib/contractUtils */
-
-    // Logic: Amendment if version > 1 OR explicit type/title
     const isAmendment = (contract?.version || 1) > 1 ||
         contract?.contract_types?.name?.toLowerCase().includes('amendment') ||
         contract?.title?.toLowerCase().includes('amendment') ||
         false
 
     return (
-        <Card>
+        <Card className={cn("mb-4 shadow-sm border-border-light dark:border-border-dark bg-white dark:bg-gray-800")}>
             <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex-1">
-
-
-
                     <CardTitle className="flex items-center gap-3 flex-wrap mb-2">
                         {contract?.title}
-
                         <ContractBadges
                             isAmendment={isAmendment}
                             isCR={isCR}
@@ -136,7 +133,7 @@ export function ContractHeader({
                             )}
                         </div>
                         {contract?.contract_number && (
-                            <div className="font-medium text-blue-600">
+                            <div className="font-bold text-blue-600">
                                 Contract #: {contract.contract_number}
                             </div>
                         )}
@@ -152,6 +149,9 @@ export function ContractHeader({
                     </div>
                 </div>
                 <div className="flex gap-2">
+                    {/* Additional Actions (e.g. Export, Edit Agenda) */}
+                    {additionalActions}
+
                     {isActive && (
                         <>
                             {!hasAmendmentInProgress && (

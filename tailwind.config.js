@@ -30,9 +30,16 @@ module.exports = {
 					foreground: 'hsl(var(--popover-foreground))'
 				},
 				primary: {
-					DEFAULT: 'hsl(var(--primary))',
-					foreground: 'hsl(var(--primary-foreground))'
+					DEFAULT: "#10b981", // Emerald 500
+					foreground: 'hsl(var(--primary-foreground))',
+					dark: "#059669",
 				},
+				"background-light": "#f3f4f6", // Gray 100
+				"background-dark": "#111827", // Gray 900
+				"surface-light": "#ffffff",
+				"surface-dark": "#1f2937", // Gray 800
+				"border-light": "#e5e7eb",
+				"border-dark": "#374151",
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
 					foreground: 'hsl(var(--secondary-foreground))'

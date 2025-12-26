@@ -80,8 +80,9 @@ export function getContractDisplayStatus(
     if (status === 'Active' || status === 'Completed') return status
 
     // Ready to Finalize? - Check if BOTH signature steps are completed
-    const internalSign = agendaList.find(s => s.step_name === "Internal Contract Signature Process")
-    const vendorSign = agendaList.find(s => s.step_name === "Vendor Contract Signature Process")
+    // Ready to Finalize? - Check if BOTH signature steps are completed
+    const internalSign = agendaList.find(s => s.step_name === "Internal Contract Signature")
+    const vendorSign = agendaList.find(s => s.step_name === "Vendor Contract Signature")
 
     const internalDone = internalSign?.end_date && internalSign.end_date !== ""
     const vendorDone = vendorSign?.end_date && vendorSign.end_date !== ""
